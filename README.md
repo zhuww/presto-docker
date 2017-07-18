@@ -1,14 +1,7 @@
 MPIFR Presto docker
 ===================
 
-Pulling a built image
----------------------
-
-If you are instead looking to simply pull the corresponding docker image, please use:
-
-<pre><code> 
-docker pull mpifrpsr/presto
-</code></pre>
+forked from Ewan Barr's github page. ---Weiwei Zhu 18/07/2017
 
 Building from Dockerfile
 ------------------------
