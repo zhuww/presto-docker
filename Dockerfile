@@ -50,6 +50,7 @@ RUN apt-get --no-install-recommends -y install \
     python \
     python-dev \
     python-pip \
+    python-tk  \
     libfftw3-3 \
     libfftw3-bin \
     libfftw3-dev \
@@ -116,9 +117,9 @@ RUN ./prepare && \
     ./configure --prefix=$PSRHOME/tempo && \
     make && \
     make install && \
-    mv obsys.dat obsys.dat_ORIGINAL && \
-    #wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/tempo/obsys.dat && \
     rm -rf .git
+    #mv obsys.dat obsys.dat_ORIGINAL && \
+    #wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/tempo/obsys.dat && \
 
 # pyslalib
 ENV PYSLALIB $PSRHOME/pyslalib
