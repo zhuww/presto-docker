@@ -117,7 +117,7 @@ RUN ./prepare && \
     make && \
     make install && \
     mv obsys.dat obsys.dat_ORIGINAL && \
-    wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/tempo/obsys.dat && \
+    #wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/tempo/obsys.dat && \
     rm -rf .git
 
 # pyslalib
