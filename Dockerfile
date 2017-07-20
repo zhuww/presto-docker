@@ -7,7 +7,9 @@
 
 FROM ubuntu:xenial-20160923.1
 
-MAINTAINER Ewan Barr "ebarr@mpifr-bonn.mpg.de"
+#MAINTAINER Ewan Barr "ebarr@mpifr-bonn.mpg.de"
+MAINTAINER Weiwei Zhu "zhuww@nao.cas.cn" 
+#adopted from Ewan Barr's repo
 
 # Suppress debconf warnings
 ENV DEBIAN_FRONTEND noninteractive
@@ -61,10 +63,16 @@ RUN apt-get --no-install-recommends -y install \
     libpnglite-dev \   
     libglib2.0-0 \
     libglib2.0-dev \
+    libblas-dev \
+    libgtk3.0-cil-dev \
+    gir1.2-gtk-3.0 \
+    python-gobject \
     openssh-server \
     docker.io \
     xorg \
     openbox \
+    imagemagick \
+    vim \
     && rm -rf /var/lib/apt/lists/* 
 
 RUN apt-get -y clean
@@ -74,7 +82,10 @@ RUN pip install pip -U && \
     pip install setuptools -U && \
     pip install numpy -U && \
     pip install scipy -U && \
-    pip install matplotlib -U    
+    pip install matplotlib -U
+
+RUN pip install -Iv scikit-learn==0.12.1
+RUN pip install -Iv theano==0.8
 
 #COPY sshd_config /etc/ssh/sshd_config
 USER psr
@@ -101,12 +112,20 @@ RUN wget http://www.atnf.csiro.au/people/pulsar/psrcat/downloads/psrcat_pkg.tar.
     git clone https://github.com/scottransom/presto.git && \
     git clone https://github.com/scottransom/pyslalib.git 
 
+RUN git clone https://github.com/zhuww/ubc_AI.git
+
 # Psrcat
 ENV PSRCAT_FILE $PSRHOME/psrcat_tar/psrcat.db
 ENV PATH $PATH:$PSRHOME/psrcat_tar
 WORKDIR $PSRHOME/psrcat_tar
 RUN /bin/bash makeit && \
     rm -f ../psrcat_pkg.tar.gz
+
+# PICS AI 
+ENV PICS $PSRHOME/ubc_AI/
+ENV PYTHONPATH $PSRHOME
+RUN echo "alias pfdviewer='python $PICS/pfdviewer.py'" >> ~/.bashrc && \
+    echo "alias quickclf='python $PICS/quickclf.py'" >> ~/.bashrc
 
 # Tempo
 ENV TEMPO $PSRHOME/tempo
@@ -123,7 +142,7 @@ RUN ./prepare && \
 
 # pyslalib
 ENV PYSLALIB $PSRHOME/pyslalib
-ENV PYTHONPATH PYSLALIB/install
+ENV PYTHONPATH $PYTHONPATH:$PYSLALIB/install
 WORKDIR $PYSLALIB
 RUN python setup.py install --record list.txt --prefix=$PYSLALIB/install && \
     python setup.py clean --all && \
