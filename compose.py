@@ -3,7 +3,7 @@
 import os
 from subprocess import Popen, PIPE, check_call
 
-#start up tempo2 service
+#start up presto service
 check_call(["docker-compose","up","-d"])
 p = Popen(["docker","ps","-aq"],stdout=PIPE,stderr=PIPE)
 p.wait()
