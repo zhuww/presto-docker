@@ -26,7 +26,8 @@ RUN adduser --disabled-password --gecos 'unprivileged user' psr && \
     chown -R psr:psr /home/psr/.ssh
 
 # Create space for ssh daemon and update the system
-RUN echo 'deb http://us.archive.ubuntu.com/ubuntu trusty main multiverse' >> /etc/apt/sources.list && \
+#RUN echo 'deb http://us.archive.ubuntu.com/ubuntu trusty main multiverse' >> /etc/apt/sources.list && \
+RUN echo 'deb mirror://mirrors.ubuntu.com/mirrors.txt trusty main multiverse' >> /etc/apt/sources.list && \
     mkdir /var/run/sshd && \
     apt-get -y check && \
     apt-get -y update && \
@@ -78,14 +79,15 @@ RUN apt-get --no-install-recommends -y install \
 RUN apt-get -y clean
 
 # Install python packages
-RUN pip install pip -U && \
-    pip install setuptools -U && \
-    pip install numpy -U && \
-    pip install scipy -U && \
-    pip install matplotlib -U
+ENV PIP_FIND_LINKS https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pip -U && \
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple setuptools -U && \
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple numpy -U && \
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple scipy -U && \
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple matplotlib -U
 
-RUN pip install -Iv scikit-learn==0.12.1
-RUN pip install -Iv theano==0.8
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scikit-learn==0.12.1
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv theano==0.8
 
 #COPY sshd_config /etc/ssh/sshd_config
 USER psr
@@ -159,8 +161,8 @@ RUN rm -rf ../.git
 RUN make prep && \
     make
 WORKDIR $PRESTO/python/ppgplot_src
-RUN mv _ppgplot.c _ppgplot.c_ORIGINAL && \
-    wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/ppgplot/_ppgplot.c
+#RUN mv _ppgplot.c _ppgplot.c_ORIGINAL && \
+    #wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/ppgplot/_ppgplot.c
 WORKDIR $PRESTO/python
 RUN make && \
     echo "export PYTHONPATH=$PYTHONPATH:$PRESTO/lib/python" >> ~/.bashrc
