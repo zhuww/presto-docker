@@ -69,6 +69,22 @@ RUN apt-get --no-install-recommends -y install \
     gir1.2-gtk-3.0 \
     python-gobject \
     openssh-server \
+    libgomp1 \
+    lib32gomp1 \
+    lib32xgomp1 \
+    lib64gomp1 \
+    openmpi-bin \
+    openmpi-common \
+    openmpi-doc \
+    libpomp-dev \
+    libpomp2-dev \
+    libpomp2-doc \
+    libopenmpi-dev \
+    libopenmpi-doc \
+    libiomp-dev \
+    libiomp-doc \
+    libiomp5 \
+    libiomp5-dbg \
     docker.io \
     xorg \
     openbox \

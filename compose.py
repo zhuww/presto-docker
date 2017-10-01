@@ -20,5 +20,5 @@ print("docker cp ./threadit.py %s:/home/psr/software/presto/lib/python/"%contain
 os.system("docker cp ./threadit.py %s:/home/psr/software/presto/lib/python/"%container)
 print("docker cp ./obsys.dat %s:/home/psr/software/tempo/"%container)
 os.system("docker cp ./obsys.dat %s:/home/psr/software/tempo/"%container)
-print("docker cp ./misc_util.c %s:/home/psr/software/presto/src"%container)
-os.system("docker cp ./misc_util.c %s:/home/psr/software/presto/src/"%container)
+print("docker cp ./misc_utils.c %s:/home/psr/software/presto/src"%container)
+os.system("docker cp ./misc_utils.c %s:/home/psr/software/presto/src/"%container)
