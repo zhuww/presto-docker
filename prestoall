@@ -8,7 +8,7 @@ from threadit import spamit
 import tempfile
 import shutil
 
-Nsub = 32 #32 subbands
+Nsub = 64 #32 subbands
 Nbin = 64 #64 sub integration
 Tres = 0.512 #ms
 npfact = 1
@@ -124,11 +124,11 @@ def foldproc(cand, Nsub=Nsub, Nbin=Nbin):
     else:
         Npart = ''
     if maskfile:
-	foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -mask ../%(maskfile)s -o %(outfile)s -noxwin -nodmsearch" % {
+	foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -mask ../%(maskfile)s -o %(outfile)s -noxwin -nodmsearch -nosearch -nopsearch" % {
                 'slowflag':slowflag, 'Npart':Npart, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag, 'maskfile':maskfile} #full plots
 	print foldcmd
     else:
-	foldcmd = "prepfold %(invert)s %(slowflag)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
+	foldcmd = "prepfold %(invert)s %(slowflag)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -o %(outfile)s -noxwin -nodmsearch -nosearch -nopsearch " % {
 	    'slowflag':slowflag, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag } #full plots
 	print foldcmd
     #os.system(foldcmd)
