@@ -24,6 +24,31 @@ clobber = True
 maskfile = False
 inverttag = ''
 
+
+def dorfifind(filename):
+    #cwd = os.getcwd()
+    global maskfile
+    rootname = '.'.join(filename.split('.')[:-1])
+    try:
+        #if not os.access(workdir, os.F_OK):
+            #os.mkdir(workdir)
+        #os.chdir(workdir)
+        logfile  = open('rfifind.log', 'wt')
+        rfifind = "rfifind -time %d -o %s ../%s" % (rfifind_inttime, rootname, filename)
+        print rfifind
+        status, output = getoutput(rfifind)
+        logfile.write(output)
+        logfile.close()
+        maskfile = rootname + '_rfifind.mask'
+        statfile = rootname + '_rfifind.stats'
+        #os.chdir(cwd)
+    except:
+        print 'failed at rfifind.'
+        print sys.exc_info()[0]
+        #os.chdir(cwd)
+        sys.exit(0)
+
+
 def accelsearch(f):
     searchcmd = "accelsearch -zmax %d -sigma %f -flo %f -fhi %f %s" % (zmax, sigma_threshold, 1./max_period, 1./min_period, f)
     status, output = getoutput(searchcmd)
@@ -115,6 +140,7 @@ def ACCEL_sift(zmax):
     return cands
 
 def foldproc(cand, Nsub=Nsub, Nbin=Nbin):
+    global rootname, maskfile
     slowflag = ''
     if cand.p > 0.4:
 	slowflag = '-slow'
@@ -123,6 +149,7 @@ def foldproc(cand, Nsub=Nsub, Nbin=Nbin):
         Npart = '-npart %d' % 2**int(np.log(52.4228 / cand.p)/np.log(2))
     else:
         Npart = ''
+    #print '***', maskfile
     if maskfile:
 	foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -mask ../%(maskfile)s -o %(outfile)s -noxwin -nodmsearch -nopsearch" % {
                 'slowflag':slowflag, 'Npart':Npart, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag, 'maskfile':maskfile} #full plots
@@ -171,6 +198,8 @@ rootname = '.'.join(filename.split('.')[:-1])
 
 #try:
 os.chdir(workdir)
+print 'doing rfifind.'
+dorfifind(filename)
 print 'doing accelsearch.'
 print os.getcwd()
 fftflist = glob.glob('*.fft')
