@@ -34,7 +34,7 @@ def dorfifind(filename):
             #os.mkdir(workdir)
         #os.chdir(workdir)
         logfile  = open('rfifind.log', 'wt')
-        rfifind = "rfifind -time %d -o %s ../%s" % (rfifind_inttime, rootname, filename)
+        rfifind = "rfifind -time %d -o %s %s" % (rfifind_inttime, rootname, filename)
         print rfifind
         status, output = getoutput(rfifind)
         logfile.write(output)
@@ -151,7 +151,7 @@ def foldproc(cand, Nsub=Nsub, Nbin=Nbin):
         Npart = ''
     #print '***', maskfile
     if maskfile:
-	foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -mask ../%(maskfile)s -o %(outfile)s -noxwin -nodmsearch -nopsearch" % {
+	foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -mask %(maskfile)s -o %(outfile)s -noxwin -nodmsearch -nopsearch" % {
                 'slowflag':slowflag, 'Npart':Npart, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag, 'maskfile':maskfile} #full plots
 	print foldcmd
     else:
