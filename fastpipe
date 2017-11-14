@@ -1,0 +1,512 @@
+#!/usr/bin/python
+"""
+A simple pipelien for demostrating presto
+Weiwei Zhu
+2015-08-14
+Max-Plank Institute for Radio Astronomy
+zhuwwpku@gmail.com
+"""
+SUM = sum
+import os, sys, glob, re
+import sifting
+from commands import getstatusoutput as getoutput
+import numpy as np
+from threadit import spamit
+import tempfile
+import shutil
+
+#Tutorial_Mode = True
+Tutorial_Mode = False
+
+try:
+    minDM = sys.argv[4]
+except:
+    minDM = 530 #min DM to search
+try:
+    maxDM = sys.argv[5]
+except:
+    maxDM = 580 #max DM to search
+Nsub = 64 #32 subbands
+Nbin = 32 #64 sub integration
+Tres = 0.2 #ms
+npfact = 1
+zmax = 0
+N_thread = 80
+zerodm = False
+rfifind_inttime = 2
+invert = False
+sigma_threshold = 3.
+min_period = 0.0005 #0.1
+max_period = 20. #15
+clobber = True
+
+"""The SKIP flags"""
+rfifind_skip = False
+dedisperse_skip = False 
+fft_accelsearch_skip = True
+sift_fold_skip = True
+
+currdir = sys.argv[1]
+os.chdir(currdir)
+filename = sys.argv[2]
+rootname = filename.rstrip('.fil')
+rootname = rootname.rstrip('.fits')
+if len(sys.argv) > 3:
+    maskfile = sys.argv[3]
+else:
+    maskfile = None
+
+workdir = '.'.join(filename.split('.')[:-1])
+
+def query(question, answer, input_type):
+    print "Based on output of the last step, answer the following questions:"
+    Ntry = 3
+    while not input_type(raw_input("%s:" % question)) == answer and Ntry > 0:
+        Ntry -= 1
+        print "try again..."
+    if Ntry == 0:print "The correct answer is:", answer
+
+
+class hamsterball(object):
+    
+    def __init__(self):
+        self.cwd = os.getcwd()
+        self.tmpdir = tempfile.mkdtemp(prefix=self.cwd+'/tmp')
+
+    def run(self, infiles, outfiles, proc, args):
+        os.chdir(self.tmpdir)
+        for infile in infiles:
+            os.symlink(self.cwd+'/'+infile, self.tmpdir+'/'+infile)
+            #os.system("ln -s %s %s" % (self.cwd+'/'+infile, self.tmpdir+'/'+infile))
+            #print self.cwd+'/'+infile, self.tmpdir+'/'+infile
+        result = proc(*args)
+        for infile in infiles:
+            os.remove(self.tmpdir+'/'+infile)
+        for outpat in outfiles:
+            for outfile in glob.glob(outpat): 
+                shutil.move(outfile, self.cwd+'/'+outfile)
+        os.chdir(self.cwd)
+        self.cleanup()
+        return result
+
+    def cleanup(self):
+        shutil.rmtree(self.tmpdir)
+
+def hamster(infiles, outfiles, proc, args):
+    newball = hamsterball()
+    return newball.run(infiles, outfiles,  proc, args)
+
+cwd = os.getcwd()
+if invert:
+    inverttag = '-invert'
+else:
+    inverttag = ''
+
+
+print '''
+
+====================Read Header======================
+
+'''
+
+#try:
+#myfil = filterbank(filename)
+
+readheadercmd = 'readfile %s' % filename
+print readheadercmd
+status, output = getoutput(readheadercmd)
+print output
+header = {}
+for line in output.split('\n'):
+    items = line.split("=")
+    if len(items) > 1:
+        header[items[0].strip()] = items[1].strip()
+
+#print header
+#except:
+    #print 'failed at reading file %s.' % filename
+    #sys.exit(0)
+
+
+print '''
+
+============Generate Dedispersion Plan===============
+
+'''
+
+try:
+    Nchan = int(header['Number of channels'])
+    tsamp = float(header['Sample time (us)']) * 1.e-6
+    BandWidth = float(header['Total Bandwidth (MHz)'])
+    fcenter = float(header['Central freq (MHz)'])
+    Nsamp = int(header['Spectra per file'])
+
+    if Tutorial_Mode:
+        query("Input file has how many frequency channel?", Nchan, int)
+        query("what is the total bandwidth?", BandWidth, float)
+        query("what is the size of each time sample in us?", tsamp*1.e6, float)
+        query("what's the center frequency?", fcenter, float)
+        print 'see how these numbers are used in the next step.'
+        print ''
+
+    ddplancmd = 'DDplan.py -l %(minDM)s -d %(maxDM)s -n %(Nchan)d -b %(BandWidth)s -t %(tsamp)f -f %(fcenter)f -s %(Nsub)s -r %(Tres)s -o %(workdir)s/DDplan.ps' % {
+            'minDM':minDM, 'maxDM':maxDM, 'Nchan':Nchan, 'tsamp':tsamp, 'BandWidth':BandWidth, 'fcenter':fcenter, 'Nsub':Nsub, 'Tres':Tres, 'workdir':workdir}
+    print ddplancmd
+    status, ddplanout = getoutput(ddplancmd)
+    print ddplanout
+    planlist = ddplanout.split('\n')
+    ddplan = []
+    planlist.reverse()
+    for plan in planlist:
+        if plan == '':
+            continue
+        elif plan.strip().startswith('Low DM'):
+            break
+        else:
+            ddplan.append(plan)
+    ddplan.reverse()
+except:
+    print 'failed at generating DDplan.'
+    print sys.exc_info()[0]
+    sys.exit(0)
+
+
+if Tutorial_Mode:
+    calls = 0
+    for line in ddplan:
+        ddpl = line.split()
+        calls += int(ddpl[7])
+    query("According to the DDplan, how many times in total do we have to call prepsubband?", calls, int)
+    print 'see how these numbers are used in the next step.'
+    print ''
+
+
+print '''
+
+====================RFI find======================
+
+'''
+if not rfifind_skip:
+    try:
+        if not os.access(workdir, os.F_OK):
+            os.mkdir(workdir)
+        os.chdir(workdir)
+        logfile  = open('rfifind.log', 'wt')
+        rfifind = "rfifind -time %d -o %s ../%s" % (rfifind_inttime, rootname, filename)
+        print rfifind
+        status, output = getoutput(rfifind)
+        logfile.write(output)
+        logfile.close()
+        maskfile = rootname + '_rfifind.mask'
+        statfile = rootname + '_rfifind.stats'
+        os.chdir(cwd)
+    except:
+        print 'failed at rfifind.'
+        print sys.exc_info()[0]
+        os.chdir(cwd)
+        sys.exit(0)
+else:
+    maskfile_tmp = rootname + '_rfifind.mask'
+    statfile_tmp = rootname + '_rfifind.mask'
+    if not os.access(maskfile_tmp, os.F_OK):
+        maskfile = maskfile_tmp
+        statfile = statfile_tmp
+    else:
+        maskfile = None
+        statfile = None
+    print "skip rfifind"
+
+
+print '''
+
+================Dedisperse Subbands==================
+
+'''
+if not dedisperse_skip:
+    #try:
+    if True:
+        if not os.access(workdir, os.F_OK):
+            os.mkdir(workdir)
+        os.chdir(workdir)
+        logfile = open('dedisperse.log', 'wt')
+        for line in ddplan:
+            ddpl = line.split()
+            lowDM = float(ddpl[0])
+            hiDM = float(ddpl[1])
+            dDM = float(ddpl[2])
+            DownSamp = int(ddpl[3])
+            NDMs = int(ddpl[6])
+            calls = int(ddpl[7])
+            Nout = Nsamp/DownSamp 
+            Nout -= (Nout % 500)
+            dmlist = np.array_split(np.arange(lowDM, hiDM, dDM), calls)
+
+            #copy from $PRESTO/python/Dedisp.py
+            subdownsamp = DownSamp/2
+            datdownsamp = 2
+            if DownSamp < 2: subdownsamp = datdownsamp = 1
+
+            def subbandproc(i, dml):
+                lodm = dml[0]
+                #hidm = dml[-1]
+                #target = rootname + "_DM%.2f.dat" % hidm
+                #if os.access(target, os.R_OK):
+                    #filesize = os.path.getsize(target)
+                    #if not filesize == 0:
+                        #print "%s file (%s in size) exist; skipped." % (target, filesize)
+                        #return "%s file (%s in size) exist; skipped." % (target, filesize)
+                subDM = np.mean(dml)
+                if zerodm:
+                    zerodmtag = '-zerodm'
+                else:
+                    zerodmtag = ''
+                if maskfile:
+                    prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d %s %s -mask %s -o %s %s" % (subDM, Nsub, subdownsamp, zerodmtag, inverttag, '../'+maskfile, rootname, '../../'+filename)
+                else:
+                    prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d %s %s -o %s %s" % (subDM, Nsub, subdownsamp, zerodmtag, inverttag, rootname, '../../'+filename)
+                    #prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d -o %s %s" % (subDM, Nsub, subdownsamp, rootname, '../'+filename)
+                print prepsubband
+                status, output1 = getoutput(prepsubband)
+
+                subnames = rootname+"_DM%.2f.sub[0-9]*" % subDM
+                #prepsubcmd = "prepsubband -nsub %(Nsub)d -lodm %(lowdm)f -dmstep %(dDM)f -numdms %(NDMs)d -numout %(Nout)d -downsamp %(DownSamp)d -o %(root)s ../%(filfile)s" % {
+                        #'Nsub':Nsub, 'lowdm':lodm, 'dDM':dDM, 'NDMs':NDMs, 'Nout':Nout, 'DownSamp':datdownsamp, 'root':rootname, 'filfile':filename}
+                prepsubcmd = "prepsubband %(invert)s -nsub %(Nsub)d -lodm %(lowdm)f -dmstep %(dDM)f -numdms %(NDMs)d -numout %(Nout)d -downsamp %(DownSamp)d -o %(root)s %(subfile)s" % {
+                        'Nsub':Nsub, 'lowdm':lodm, 'dDM':dDM, 'NDMs':NDMs, 'Nout':Nout, 'DownSamp':datdownsamp, 'root':rootname, 'subfile':subnames, 'invert':inverttag}
+                print prepsubcmd
+                status, output2 = getoutput(prepsubcmd)
+                #os.system('rm ./%s' % subnames)
+                
+                return output1+'\n'+output2
+            outputs = spamit(hamster, [[[], ['*.dat', '*.inf'], subbandproc,[i,dml]] for i,dml in enumerate(dmlist)], num_threads=N_thread)
+
+        logfile.write('\n'.join(outputs))
+        logfile.close()
+        os.system('rm *.sub*')
+        os.chdir(cwd)
+
+    #except:
+    else:
+        print 'failed at prepsubband.'
+        print sys.exc_info()[0]
+        os.chdir(cwd)
+        sys.exit(0)
+else:
+    print "skipped dedisperse"
+
+
+print '''
+
+================fft-search subbands==================
+
+'''
+if not fft_accelsearch_skip:
+    try:
+        os.chdir(workdir)
+        datfiles = glob.glob("*.dat")
+        logfile = open('fft.log', 'wt')
+
+        def fftsearch(df):
+            fftf = '.'.join(df.split('.')[:-1]) + '.fft'
+            #print 'to fft the file:', df, type(df), fftf
+            #print 'to generate:', fftf
+            target = fftf
+            #print  cwd+'/'+workdir+'/'+target, os.access( cwd+'/'+workdir+'/'+target, os.R_OK), (os.path.getsize(cwd+'/'+workdir+'/'+target == 0)
+            if not clobber and os.access(cwd+'/'+workdir+'/'+target, os.R_OK) and (not os.path.getsize(cwd+'/'+workdir+'/'+target) == 0):
+                print "%s file exist; skipped." % target
+                output = "%s file exist; skipped." % target
+            else:
+                fftcmd = "realfft %s" % df
+                print fftcmd
+                status, output = getoutput(fftcmd)
+            output += '\n'
+            target = '.'.join(df.split('.')[:-1]) + ('_ACCEL_%d' % zmax)
+            #print  cwd+'/'+workdir+'/'+target, os.access( cwd+'/'+workdir+'/'+target, os.R_OK), os.path.getsize(cwd+'/'+workdir+'/'+target == 0
+            if not clobber and os.access(cwd+'/'+workdir+'/'+target, os.R_OK) and (not os.path.getsize(cwd+'/'+workdir+'/'+target)  == 0):
+                print "%s file exist; skipped." % target
+                output = "%s file exist; skipped." % target
+            else:
+                searchcmd = "accelsearch -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                print searchcmd
+                status, tmp = getoutput(searchcmd)
+                output += tmp
+            return output
+        outputs = spamit(hamster, [[['.'.join(df.split('.')[:-1]) + '.inf', df], ['*.fft', '*.txtcand', '*.cand', ('*ACCEL_%d' % zmax)], fftsearch, [df]] for df in datfiles], num_threads=N_thread)
+        logfile.write('\n'.join(outputs))
+        logfile.close()
+        os.chdir(cwd)
+    except:
+        print 'failed at fft search.'
+        print sys.exc_info()[0]
+        os.chdir(cwd)
+        sys.exit(0)
+else:
+    print "fft & accelsearch skipped."
+
+
+def ACCEL_sift(zmax):
+    '''
+    The following code come from PRESTO's ACCEL_sift.py
+    '''
+
+    globaccel = "*ACCEL_%d" % zmax
+    globinf = "*DM*.inf"
+    # In how many DMs must a candidate be detected to be considered "good"
+    min_num_DMs = 1
+    # Lowest DM to consider as a "real" pulsar
+    low_DM_cutoff = 2.0
+    # Ignore candidates with a sigma (from incoherent power summation) less than this
+    sifting.sigma_threshold = sigma_threshold
+    # Ignore candidates with a coherent power less than this
+    sifting.c_pow_threshold = sigma_threshold
+
+    # If the birds file works well, the following shouldn't
+    # be needed at all...  If they are, add tuples with the bad
+    # values and their errors.
+    #                (ms, err)
+    sifting.known_birds_p = []
+    #                (Hz, err)
+    sifting.known_birds_f = []
+
+    # The following are all defined in the sifting module.
+    # But if we want to override them, uncomment and do it here.
+    # You shouldn't need to adjust them for most searches, though.
+
+    # How close a candidate has to be to another candidate to                
+    # consider it the same candidate (in Fourier bins)
+    sifting.r_err = 1.1
+    # Shortest period candidates to consider (s)
+    sifting.short_period = min_period
+    # Longest period candidates to consider (s)
+    sifting.long_period = max_period
+    # Ignore any candidates where at least one harmonic does exceed this power
+    sifting.harm_pow_cutoff = 10.
+
+    #--------------------------------------------------------------
+
+    # Try to read the .inf files first, as _if_ they are present, all of
+    # them should be there.  (if no candidates are found by accelsearch
+    # we get no ACCEL files...
+    inffiles = glob.glob(globinf)
+    candfiles = glob.glob(globaccel)
+    # Check to see if this is from a short search
+    if len(re.findall("_[0-9][0-9][0-9]M_" , inffiles[0])):
+        dmstrs = [x.split("DM")[-1].split("_")[0] for x in candfiles]
+    else:
+        dmstrs = [x.split("DM")[-1].split(".inf")[0] for x in inffiles]
+    dms = map(float, dmstrs)
+    dms.sort()
+    dmstrs = ["%.2f"%x for x in dms]
+
+    # Read in all the candidates
+    cands = sifting.read_candidates(candfiles)
+    #candslst = spamit(sifting.read_candidates, [[candfile] for candfile in candfiles], num_threads=N_thread)
+    #cands = SUM(candslst, [])
+
+    # Remove candidates that are duplicated in other ACCEL files
+    if len(cands):
+        cands = sifting.remove_duplicate_candidates(cands)
+
+    # Remove candidates with DM problems
+    if len(cands):
+        cands = sifting.remove_DM_problems(cands, min_num_DMs, dmstrs, low_DM_cutoff)
+
+    # Remove candidates that are harmonically related to each other
+    # Note:  this includes only a small set of harmonics
+    if len(cands):
+        try:
+            newcands = sifting.remove_harmonics(cands)
+            cands = newcands
+        except IndexError:
+            pass
+
+    # Write candidates to STDOUT
+    if len(cands):
+        cands.sort(sifting.cmp_sigma)
+        #for cand in cands[:1]:
+            #print cand.filename, cand.candnum, cand.p, cand.DMstr
+        #sifting.write_candlist(cands)
+    return cands
+
+if not sift_fold_skip:
+
+    print '''
+
+================sifting candidates==================
+
+'''
+
+    try:
+        os.chdir(workdir)
+        cands = ACCEL_sift(zmax)
+        os.chdir(cwd)
+    except:
+        print 'failed at sifting candidates.'
+        print sys.exc_info()[0]
+        os.chdir(cwd)
+        sys.exit(0)
+
+
+    print '''
+
+================folding candidates==================
+
+'''
+
+    #try:
+    #cwd = os.getcwd()
+    os.chdir(workdir)
+    os.system('ln -s ../%s %s' % (filename, filename))
+    logfile = open('folding.log', 'wt')
+
+    def foldproc(cand, Nsub=Nsub, Nbin=Nbin):
+        slowflag = ''
+        if cand .p > 0.4:
+            slowflag = '-slow'
+            Nsub = 128
+            Nbin = 128
+            Npart = '-npart %d' % 2**int(np.log(52.4228 / cand.p)/np.log(2))
+        else:
+            Npart = ''
+        if maskfile:
+            foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -mask ../%(maskfile)s -o %(outfile)s -noxwin -nodmsearch" % {
+                    'slowflag':slowflag, 'Npart':Npart, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag, 'maskfile':maskfile} #full plots
+            print foldcmd
+        else:
+            foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
+                    'slowflag':slowflag, 'Npart':Npart, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag } #full plots
+            print foldcmd
+        #os.system(foldcmd)
+        status, output = getoutput(foldcmd)
+        return output
+
+
+    #for cand in cands:
+        ##print cand.__dict__.keys()
+        ##foldcmd = "prepfold -dm %(dm)f -accelcand %(candnum)d -accelfile %(accelfile)s %(datfile)s -noxwin " % {
+        ##'dm':cand.DM,  'accelfile':cand.filename+'.cand', 'candnum':cand.candnum, 'datfile':('%s_DM%s.dat' % (rootname, cand.DMstr))} #simple plots
+        #foldcmd = "prepfold -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
+                #'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr} #full plots
+        #print foldcmd
+        ##os.system(foldcmd)
+        #status, output = getoutput(foldcmd)
+
+    if maskfile:
+        outputs = spamit(hamster, [[[filename], ['*.pfd'], foldproc, [cand]] for cand in cands], num_threads=N_thread)
+    else:
+        outputs = spamit(hamster, [[[filename], ['*.pfd'], foldproc, [cand]] for cand in cands], num_threads=N_thread)
+
+    logfile.write('\n'.join(outputs))
+    logfile.close()
+    os.chdir(cwd)
+    #except:
+        #print 'failed at folding candidates.'
+        #os.chdir(cwd)
+        #sys.exit(0)
+else:
+    print "sift & fold skipped."
+
+os.chdir(workdir)
+os.system('single_pulse_search.py *.dat')
+os.chdir(cwd)
+
