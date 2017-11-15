@@ -36,6 +36,7 @@ RUN echo 'deb mirror://mirrors.ubuntu.com/mirrors.txt trusty main multiverse' >>
     apt-get -y upgrade 
 
 # Install dependencies
+RUN apt-get -y update --fix-missing
 RUN apt-get --no-install-recommends -y install \
     build-essential \
     autoconf \
@@ -70,17 +71,11 @@ RUN apt-get --no-install-recommends -y install \
     python-gobject \
     openssh-server \
     libgomp1 \
-    lib32gomp1 \
-    lib32xgomp1 \
-    lib64gomp1 \
     openmpi-bin \
     openmpi-common \
     openmpi-doc \
     libpomp-dev \
-    libpomp2-dev \
-    libpomp2-doc \
     libopenmpi-dev \
-    libopenmpi-doc \
     libiomp-dev \
     libiomp-doc \
     libiomp5 \
@@ -96,11 +91,13 @@ RUN apt-get -y clean
 
 # Install python packages
 ENV PIP_FIND_LINKS https://pypi.tuna.tsinghua.edu.cn/simple
-RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pip -U && \
-    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple setuptools -U && \
-    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple numpy -U && \
-    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple scipy -U && \
-    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple matplotlib -U
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pip -U 
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple setuptools -U
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scipy==0.19.0
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple numpy 
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple matplotlib 
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple astropy 
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pyfits 
 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scikit-learn==0.12.1
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv theano==0.8
@@ -127,10 +124,9 @@ WORKDIR $PSRHOME
 RUN wget http://www.atnf.csiro.au/people/pulsar/psrcat/downloads/psrcat_pkg.tar.gz && \
     tar -xvf psrcat_pkg.tar.gz -C $PSRHOME && \
     git clone git://git.code.sf.net/p/tempo/tempo && \
-    git clone https://github.com/scottransom/presto.git && \
+    git clone https://github.com/zhuww/presto.git && \
     git clone https://github.com/scottransom/pyslalib.git 
 
-RUN git clone https://github.com/zhuww/ubc_AI.git
 
 # Psrcat
 ENV PSRCAT_FILE $PSRHOME/psrcat_tar/psrcat.db
@@ -140,10 +136,11 @@ RUN /bin/bash makeit && \
     rm -f ../psrcat_pkg.tar.gz
 
 # PICS AI 
-ENV PICS $PSRHOME/ubc_AI/
-ENV PYTHONPATH $PSRHOME
-RUN echo "alias pfdviewer='python $PICS/pfdviewer.py'" >> ~/.bashrc && \
-    echo "alias quickclf='python $PICS/quickclf.py'" >> ~/.bashrc
+#RUN git clone https://github.com/zhuww/ubc_AI.git
+#ENV PICS $PSRHOME/ubc_AI/
+#ENV PYTHONPATH $PSRHOME
+#RUN echo "alias pfdviewer='python $PICS/pfdviewer.py'" >> ~/.bashrc && \
+#    echo "alias quickclf='python $PICS/quickclf.py'" >> ~/.bashrc
 
 # Tempo
 ENV TEMPO $PSRHOME/tempo
@@ -165,6 +162,9 @@ WORKDIR $PYSLALIB
 RUN python setup.py install --record list.txt --prefix=$PYSLALIB/install && \
     python setup.py clean --all && \
     rm -rf .git
+
+#RUN pip uninstall scipy
+#RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple scipy==0.19.1
 
 # Presto
 ENV PRESTO $PSRHOME/presto
