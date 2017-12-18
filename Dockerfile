@@ -98,6 +98,7 @@ RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple numpy
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple matplotlib 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple astropy 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pyfits 
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pywavelets
 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scikit-learn==0.12.1
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv theano==0.8

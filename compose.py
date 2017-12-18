@@ -14,6 +14,7 @@ container = "presto"
 #os.system("docker cp ~/.ssh/id_rsa.pub %s:/root/.ssh/authorized_keys"%container)
 #print("docker cp ~/.ssh/id_rsa.pub %s:/home/psr/.ssh/authorized_keys"%container)
 #os.system("docker cp ~/.ssh/id_rsa.pub %s:/home/psr/.ssh/authorized_keys"%container)
+
 print("docker cp ./prestoall  %s:/home/psr/software/presto/bin/"%container)
 os.system("docker cp ./prestoall  %s:/home/psr/software/presto/bin/"%container)
 print("docker cp ./DDplan.py %s:/home/psr/software/presto/bin/"%container)

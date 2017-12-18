@@ -14,26 +14,30 @@ import numpy as np
 from threadit import spamit
 import tempfile
 import shutil
+import multiprocessing as MP
 
 #Tutorial_Mode = True
 Tutorial_Mode = False
 
+minDM = 50 #min DM to search
+maxDM = 5000  #max DM to search
 try:
-    minDM = sys.argv[4]
+    minDM = sys.argv[3]
 except:
-    minDM = 530 #min DM to search
+    minDM = 50 #min DM to search
 try:
-    maxDM = sys.argv[5]
+    maxDM = sys.argv[4]
 except:
-    maxDM = 580 #max DM to search
-Nsub = 64 #32 subbands
-Nbin = 32 #64 sub integration
-Tres = 0.2 #ms
+    maxDM = 3000 #max DM to search
+Nsub = 128 #32 subbands
+Nbin = 64 #64 sub integration
+Tres = 1.0 #ms 
 npfact = 1
 zmax = 0
-N_thread = 80
+numharm = 32 #32 too large leads to accelsearch crash
+N_thread = MP.cpu_count()
 zerodm = False
-rfifind_inttime = 2
+rfifind_inttime = 0.5
 invert = False
 sigma_threshold = 3.
 min_period = 0.0005 #0.1
@@ -42,19 +46,25 @@ clobber = True
 
 """The SKIP flags"""
 rfifind_skip = False
-dedisperse_skip = False 
-fft_accelsearch_skip = True
-sift_fold_skip = True
+dedisperse_skip = False
+fft_accelsearch_skip = False
+sift_fold_skip = False
 
 currdir = sys.argv[1]
 os.chdir(currdir)
 filename = sys.argv[2]
+#filename = sys.argv[1]
 rootname = filename.rstrip('.fil')
 rootname = rootname.rstrip('.fits')
-if len(sys.argv) > 3:
-    maskfile = sys.argv[3]
-else:
-    maskfile = None
+if len(sys.argv) > 5:
+    #maskfile = sys.argv[5]
+    if sys.argv[5] == 'SKIP':
+        fft_accelsearch_skip = True
+        sift_fold_skip = True
+    else:
+        zmax = int(sys.argv[5])
+
+maskfile = None
 
 workdir = '.'.join(filename.split('.')[:-1])
 
@@ -140,6 +150,9 @@ try:
     BandWidth = float(header['Total Bandwidth (MHz)'])
     fcenter = float(header['Central freq (MHz)'])
     Nsamp = int(header['Spectra per file'])
+    Duration = float(header['Time per file (sec)'])
+
+    if Nsub > Nchan: Nsub = Nchan
 
     if Tutorial_Mode:
         query("Input file has how many frequency channel?", Nchan, int)
@@ -192,7 +205,12 @@ if not rfifind_skip:
             os.mkdir(workdir)
         os.chdir(workdir)
         logfile  = open('rfifind.log', 'wt')
-        rfifind = "rfifind -time %d -o %s ../%s" % (rfifind_inttime, rootname, filename)
+        #rfifind = "rfifind -ncpus %d -time %f -o %s ../%s" % (N_thread, rfifind_inttime, rootname, filename)
+        makezap = "python ~/software/presto/bin/makezap.py ../%s" % filename
+        print makezap
+        status, output = getoutput(makezap)
+        print output
+        rfifind = "rfifind -ncpus %d -time %f -zapchan `cat chans.zap`  -o %s ../%s" % (N_thread, rfifind_inttime, rootname, filename)
         print rfifind
         status, output = getoutput(rfifind)
         logfile.write(output)
@@ -234,7 +252,7 @@ if not dedisperse_skip:
             lowDM = float(ddpl[0])
             hiDM = float(ddpl[1])
             dDM = float(ddpl[2])
-            DownSamp = int(ddpl[3])
+            DownSamp = min(int(ddpl[3]), 8)
             NDMs = int(ddpl[6])
             calls = int(ddpl[7])
             Nout = Nsamp/DownSamp 
@@ -326,9 +344,15 @@ if not fft_accelsearch_skip:
                 print "%s file exist; skipped." % target
                 output = "%s file exist; skipped." % target
             else:
-                searchcmd = "accelsearch -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (numharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
                 print searchcmd
                 status, tmp = getoutput(searchcmd)
+                localnumharm = numharm
+                while status > 0:
+                    localnumharm /= 2
+                    searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                    print searchcmd
+                    status, tmp = getoutput(searchcmd)
                 output += tmp
             return output
         outputs = spamit(hamster, [[['.'.join(df.split('.')[:-1]) + '.inf', df], ['*.fft', '*.txtcand', '*.cand', ('*ACCEL_%d' % zmax)], fftsearch, [df]] for df in datfiles], num_threads=N_thread)
@@ -399,7 +423,7 @@ def ACCEL_sift(zmax):
     dmstrs = ["%.2f"%x for x in dms]
 
     # Read in all the candidates
-    cands = sifting.read_candidates(candfiles)
+    cands = sifting.read_candidates(candfiles, prelim_reject=False, track=True)
     #candslst = spamit(sifting.read_candidates, [[candfile] for candfile in candfiles], num_threads=N_thread)
     #cands = SUM(candslst, [])
 
@@ -465,7 +489,8 @@ if not sift_fold_skip:
             slowflag = '-slow'
             Nsub = 128
             Nbin = 128
-            Npart = '-npart %d' % 2**int(np.log(52.4228 / cand.p)/np.log(2))
+            #Npart = '-npart %d' % 2**int(np.log(52.4228 / cand.p)/np.log(2))
+            Npart = '-npart %d' % 2**int(np.log(Duration / cand.p)/np.log(2))
         else:
             Npart = ''
         if maskfile:
@@ -496,6 +521,14 @@ if not sift_fold_skip:
     else:
         outputs = spamit(hamster, [[[filename], ['*.pfd'], foldproc, [cand]] for cand in cands], num_threads=N_thread)
 
+    #os.system('python ~/software/ubc_AI/quickclf.py')
+    #os.system('sort -g -k 2 -r clfresult.txt > tmp')
+    #os.system('mv tmp clfresult.txt')
+
+        #convertcmd = 'convert -rotate 90 %s.ps %s.png' % (f, f)
+        #print convertcmd
+        #os.system(convertcmd)
+
     logfile.write('\n'.join(outputs))
     logfile.close()
     os.chdir(cwd)
@@ -506,7 +539,114 @@ if not sift_fold_skip:
 else:
     print "sift & fold skipped."
 
-os.chdir(workdir)
-os.system('single_pulse_search.py *.dat')
-os.chdir(cwd)
 
+    print '''
+
+================single pulse search==================
+
+'''
+
+os.chdir(workdir)
+os.system('ln -s ../%s %s' % (filename, filename))
+log = ''
+def sp_search(f):
+    spcmd = 'single_pulse_search.py --noplot %s' % f
+    status, output = getoutput(spcmd)
+    return output 
+
+inffile = glob.glob('*_rfifind.inf')[0]
+rrattrapcmd = 'rrattrap.py --inffile %s *.singlepulse' % inffile
+make_spd_cmd = 'make_spd.py %s  --groupsfile=groups.txt --maskfile=%s *.singlepulse' % (filename, maskfile)
+
+log += '\n\n'
+output = '\n'.join(spamit(sp_search, [[f] for f in glob.glob('*.dat')]))
+log += output
+log += '\n\n'
+print rrattrapcmd
+status, output = getoutput(rrattrapcmd)
+log += output
+log += '\n\n'
+print make_spd_cmd
+status, output = getoutput(make_spd_cmd)
+log += output
+
+with open('singlepulse.log', 'w') as fo:
+    fo.write(log)
+os.system('rm *.dat')
+os.system('rm *.fft')
+
+import cPickle, glob, ubc_AI
+from ubc_AI.data import pfdreader
+from ubc_AI.prepfold import pfd
+from astropy.time import Time
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+AI_PATH = '/'.join(ubc_AI.__file__.split('/')[:-1])
+classifier = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_PALFA.pkl','rb'))
+#classifier = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_BD.pkl','rb'))
+pfdfile = glob.glob('*.pfd') 
+spdfile = glob.glob('*.spd')
+if len(pfdfile) > 0:
+    pfd_scores = np.array(classifier.report_score([pfdreader(f) for f in pfdfile]))
+else:
+    pfd_scores = np.array([])
+if len(spdfile) > 0:
+    spd_scores = np.array(classifier.report_score([pfdreader(f) for f in spdfile]))
+else:
+    spd_scores = np.array([])
+AI_scores = np.hstack((pfd_scores, spd_scores))
+allfile = np.hstack((pfdfile, spdfile))
+
+argindex = np.argsort(AI_scores)[::-1]
+pfdindex = np.argsort(pfd_scores)[::-1]
+
+#text = '\n'.join(['%s %s' % (allfile[i], AI_scores[i]) for i in argindex])
+info = []
+for i in argindex:
+    if AI_scores[i] > 0.1:
+        name = allfile[i]
+        rating = AI_scores[i]
+        ibeam = 0
+        idx = i
+        if name.endswith('pfd'):
+            apfd = pfd(name)
+            DM = apfd.bestdm
+            T = apfd.topo_p1 #period
+            width = apfd.topo_p2 #Pdot
+            mjd = str(apfd.mid_topo_MJDs.mean())
+            ra = apfd.rastr
+            dec = apfd.decstr
+            sigma = apfd.calc_redchi2()
+        else:
+            text_array = np.load(name)['text_array']
+            DM = float(text_array[8])
+            mjd = str(text_array[4])
+            ra = text_array[2]
+            dec = text_array[3]
+            width = float(text_array[13])
+            #duration = float(text_array[11])
+            T = float(text_array[16])
+            sigma = float(text_array[9])
+        ObsDate = Time(float(mjd), format='mjd').datetime
+        date = ObsDate.strftime("%Y-%m-%d")
+        time = ObsDate.strftime("%H:%M:%S")
+        sc = SkyCoord(ra+' '+dec,unit=(u.hourangle, u.deg))
+        gl = sc.galactic.l.deg
+        gb = sc.galactic.b.deg
+
+        info.append(' '.join([str(item) for item in [name, DM, T, date, time, mjd, ibeam, idx, sigma, width, gl, gb, rating]]))
+
+
+text = "\n".join(info)
+fout = open('clfresult.txt', 'w')
+fout.write(text)
+fout.close()
+for f in [pfdfile[i] for i in pfdindex if pfd_scores[i] >= 0.1]:
+    os.system('show_pfd %s' % f)
+for f in [allfile[i] for i in argindex if AI_scores[i] < 0.1]:
+    os.system('rm %s' % f)
+    os.system('rm %s.ps' % f)
+
+
+os.chdir(cwd)
+print  'FINISHED'
