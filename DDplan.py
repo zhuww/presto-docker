@@ -202,7 +202,7 @@ def dm_steps(loDM, hiDM, obs, cohdm=0.0, numsub=0, ok_smearing=0.0, device="/XWI
     allow_dDMs = [0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0,
                   2.0, 3.0, 5.0, 10.0, 20.0, 30.0, 50.0, 100.0, 200.0, 300.0]
     # Allowable number of downsampling factors
-    allow_downsamps = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+    allow_downsamps = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 
     # Initial values
     index_downsamps = index_dDMs = 0
