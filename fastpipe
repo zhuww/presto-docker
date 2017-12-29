@@ -587,7 +587,17 @@ classifier = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_PALFA.pkl','rb'))
 pfdfile = glob.glob('*.pfd') 
 spdfile = glob.glob('*.spd')
 if len(pfdfile) > 0:
-    pfd_scores = np.array(classifier.report_score([pfdreader(f) for f in pfdfile]))
+    try:
+        pfd_scores = np.array(classifier.report_score([pfdreader(f) for f in pfdfile]))
+    except:
+        pfd_scores = []
+        for f in pfdfile:
+            try:
+                score = classifier.report_score([f])
+            except:
+                score = -1.
+            pfd_scores.append(score)
+
 else:
     pfd_scores = np.array([])
 if len(spdfile) > 0:

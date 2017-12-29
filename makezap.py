@@ -5,7 +5,7 @@ import os, sys, glob, time
 from decimal import Decimal
 
 secperday = 3600 * 24
-cutoff = 0.05
+cutoff = 0.2
 
 now = time.time()
 
