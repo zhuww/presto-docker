@@ -31,17 +31,19 @@ except:
     maxDM = 3000 #max DM to search
 Nsub = 128 #32 subbands
 Nbin = 64 #64 sub integration
-Tres = 1.0 #ms 
+Tres = 0.5 #ms 
 npfact = 1
 zmax = 0
 numharm = 32 #32 too large leads to accelsearch crash
 N_thread = MP.cpu_count()
 zerodm = False
-rfifind_inttime = 0.5
+rfifind_inttime = 0.1
 invert = False
 sigma_threshold = 3.
 min_period = 0.0005 #0.1
 max_period = 20. #15
+AI_cutoff_pfd = 0.05
+AI_cutoff_spd = 0.0
 clobber = True
 
 """The SKIP flags"""
@@ -556,7 +558,7 @@ def sp_search(f):
 
 inffile = glob.glob('*_rfifind.inf')[0]
 rrattrapcmd = 'rrattrap.py --inffile %s *.singlepulse' % inffile
-make_spd_cmd = 'make_spd.py %s  --groupsfile=groups.txt --maskfile=%s *.singlepulse' % (filename, maskfile)
+make_spd_cmd = 'make_spd.py --mask -s 64 %s  --groupsfile=groups.txt --maskfile=%s *.singlepulse' % (filename, maskfile)
 
 log += '\n\n'
 output = '\n'.join(spamit(sp_search, [[f] for f in glob.glob('*.dat')]))
@@ -609,51 +611,53 @@ allfile = np.hstack((pfdfile, spdfile))
 
 argindex = np.argsort(AI_scores)[::-1]
 pfdindex = np.argsort(pfd_scores)[::-1]
+spdindex = np.argsort(spd_scores)[::-1]
 
 #text = '\n'.join(['%s %s' % (allfile[i], AI_scores[i]) for i in argindex])
 info = []
 for i in argindex:
-    if AI_scores[i] > 0.1:
-        name = allfile[i]
-        rating = AI_scores[i]
-        ibeam = 0
-        idx = i
-        if name.endswith('pfd'):
-            apfd = pfd(name)
-            DM = apfd.bestdm
-            T = apfd.topo_p1 #period
-            width = apfd.topo_p2 #Pdot
-            mjd = str(apfd.mid_topo_MJDs.mean())
-            ra = apfd.rastr
-            dec = apfd.decstr
-            sigma = apfd.calc_redchi2()
-        else:
-            text_array = np.load(name)['text_array']
-            DM = float(text_array[8])
-            mjd = str(text_array[4])
-            ra = text_array[2]
-            dec = text_array[3]
-            width = float(text_array[13])
-            #duration = float(text_array[11])
-            T = float(text_array[16])
-            sigma = float(text_array[9])
-        ObsDate = Time(float(mjd), format='mjd').datetime
-        date = ObsDate.strftime("%Y-%m-%d")
-        time = ObsDate.strftime("%H:%M:%S")
-        sc = SkyCoord(ra+' '+dec,unit=(u.hourangle, u.deg))
-        gl = sc.galactic.l.deg
-        gb = sc.galactic.b.deg
+    name = allfile[i]
+    rating = AI_scores[i]
+    ibeam = 0
+    idx = i
+    if name.endswith('pfd') and AI_scores[i] > AI_cutoff_pfd:
+        apfd = pfd(name)
+        DM = apfd.bestdm
+        T = apfd.topo_p1 #period
+        width = apfd.topo_p2 #Pdot
+        mjd = str(apfd.mid_topo_MJDs.mean())
+        ra = apfd.rastr
+        dec = apfd.decstr
+        sigma = apfd.calc_redchi2()
+    elif name.endswith('spd') and AI_scores[i] > AI_cutoff_spd:
+        text_array = np.load(name)['text_array']
+        DM = float(text_array[8])
+        mjd = str(text_array[4])
+        ra = text_array[2]
+        dec = text_array[3]
+        width = float(text_array[13])
+        #duration = float(text_array[11])
+        T = float(text_array[16])
+        sigma = float(text_array[9])
+    else:
+        continue
+    ObsDate = Time(float(mjd), format='mjd').datetime
+    date = ObsDate.strftime("%Y-%m-%d")
+    time = ObsDate.strftime("%H:%M:%S")
+    sc = SkyCoord(ra+' '+dec,unit=(u.hourangle, u.deg))
+    gl = sc.galactic.l.deg
+    gb = sc.galactic.b.deg
 
-        info.append(' '.join([str(item) for item in [name, DM, T, date, time, mjd, ibeam, idx, sigma, width, gl, gb, rating]]))
+    info.append(' '.join([str(item) for item in [name, DM, T, date, time, mjd, ibeam, idx, sigma, width, gl, gb, rating]]))
 
 
 text = "\n".join(info)
 fout = open('clfresult.txt', 'w')
 fout.write(text)
 fout.close()
-for f in [pfdfile[i] for i in pfdindex if pfd_scores[i] >= 0.1]:
+for f in [pfdfile[i] for i in pfdindex if pfd_scores[i] >= AI_cutoff_pfd]:
     os.system('show_pfd %s' % f)
-for f in [allfile[i] for i in argindex if AI_scores[i] < 0.1]:
+for f in [spdfile[i] for i in spdindex if spd_scores[i] < AI_cutoff_spd]:
     os.system('rm %s' % f)
     os.system('rm %s.ps' % f)
 
