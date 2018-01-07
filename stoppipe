@@ -1,0 +1,8 @@
+#!/bin/bash
+docker exec -i presto sh -c "stopall fastpipe"
+docker exec -i presto sh -c "stopall readfile"
+docker exec -i presto sh -c "stopall python"
+docker exec -i presto sh -c "stopall prepfold"
+docker exec -i presto sh -c "stopall realfft"
+docker exec -i presto sh -c "stopall accelsearch"
+docker exec -i presto sh -c "stopall presubband"
