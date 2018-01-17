@@ -2,6 +2,7 @@ version: '2'
 services:
   presto:
     build: .
+    #shm_size: 128gb
     container_name: presto
     volumes:
      - ~/work/:/work/
@@ -16,3 +17,4 @@ services:
      - "2223:22/tcp"
     image: "mpifrpsr/presto"
     command: "/usr/sbin/sshd -D"  
+    tty: false

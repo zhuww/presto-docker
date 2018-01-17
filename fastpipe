@@ -35,7 +35,7 @@ Tres = 0.5 #ms
 npfact = 1
 zmax = 0
 numharm = 32 #32 too large leads to accelsearch crash
-N_thread = MP.cpu_count()
+N_thread = MP.cpu_count() - 1
 zerodm = False
 rfifind_inttime = 0.1
 invert = False
@@ -207,12 +207,15 @@ if not rfifind_skip:
             os.mkdir(workdir)
         os.chdir(workdir)
         logfile  = open('rfifind.log', 'wt')
+        #os.system('cp ../%s /dev/shm/' % filename)
+        #os.symlink(('/dev/shm/%s' % filename), ('./%s' % filename))
+        os.symlink(('../%s' % filename), ('./%s' % filename))
         #rfifind = "rfifind -ncpus %d -time %f -o %s ../%s" % (N_thread, rfifind_inttime, rootname, filename)
-        makezap = "python ~/software/presto/bin/makezap.py ../%s" % filename
+        makezap = "python ~/software/presto/bin/makezap.py ./%s" % filename
         print makezap
         status, output = getoutput(makezap)
         print output
-        rfifind = "rfifind -ncpus %d -time %f -zapchan `cat chans.zap`  -o %s ../%s" % (N_thread, rfifind_inttime, rootname, filename)
+        rfifind = "rfifind -ncpus %d -time %f -zapchan `cat chans.zap`  -o %s ./%s" % (N_thread, rfifind_inttime, rootname, filename)
         print rfifind
         status, output = getoutput(rfifind)
         logfile.write(output)
@@ -254,7 +257,7 @@ if not dedisperse_skip:
             lowDM = float(ddpl[0])
             hiDM = float(ddpl[1])
             dDM = float(ddpl[2])
-            DownSamp = min(int(ddpl[3]), 8)
+            DownSamp = min(int(ddpl[3]), 4)
             NDMs = int(ddpl[6])
             calls = int(ddpl[7])
             Nout = Nsamp/DownSamp 
@@ -281,9 +284,9 @@ if not dedisperse_skip:
                 else:
                     zerodmtag = ''
                 if maskfile:
-                    prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d %s %s -mask %s -o %s %s" % (subDM, Nsub, subdownsamp, zerodmtag, inverttag, '../'+maskfile, rootname, '../../'+filename)
+                    prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d %s %s -mask %s -o %s %s" % (subDM, Nsub, subdownsamp, zerodmtag, inverttag, '../'+maskfile, rootname, '../'+filename)
                 else:
-                    prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d %s %s -o %s %s" % (subDM, Nsub, subdownsamp, zerodmtag, inverttag, rootname, '../../'+filename)
+                    prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d %s %s -o %s %s" % (subDM, Nsub, subdownsamp, zerodmtag, inverttag, rootname, '../'+filename)
                     #prepsubband = "prepsubband -sub -subdm %.2f -nsub %d -downsamp %d -o %s %s" % (subDM, Nsub, subdownsamp, rootname, '../'+filename)
                 print prepsubband
                 status, output1 = getoutput(prepsubband)
@@ -346,16 +349,18 @@ if not fft_accelsearch_skip:
                 print "%s file exist; skipped." % target
                 output = "%s file exist; skipped." % target
             else:
-                searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (numharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
-                print searchcmd
-                status, tmp = getoutput(searchcmd)
-                localnumharm = numharm
-                while status > 0:
+                #searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (numharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                #print searchcmd
+                #status, tmp = getoutput(searchcmd)
+                status = 1
+                localnumharm = numharm * 2
+                while status > 0 and localnumharm > 4:
                     localnumharm /= 2
-                    searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                    #searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                    searchcmd = "accelsearch -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
                     print searchcmd
                     status, tmp = getoutput(searchcmd)
-                output += tmp
+                output += ("accelsearch exit status code %s \n%s" % (status, tmp))
             return output
         outputs = spamit(hamster, [[['.'.join(df.split('.')[:-1]) + '.inf', df], ['*.fft', '*.txtcand', '*.cand', ('*ACCEL_%d' % zmax)], fftsearch, [df]] for df in datfiles], num_threads=N_thread)
         logfile.write('\n'.join(outputs))
@@ -482,7 +487,7 @@ if not sift_fold_skip:
     #try:
     #cwd = os.getcwd()
     os.chdir(workdir)
-    os.system('ln -s ../%s %s' % (filename, filename))
+    #os.system('ln -s ../%s %s' % (filename, filename))
     logfile = open('folding.log', 'wt')
 
     def foldproc(cand, Nsub=Nsub, Nbin=Nbin):
@@ -549,7 +554,7 @@ else:
 '''
 
 os.chdir(workdir)
-os.system('ln -s ../%s %s' % (filename, filename))
+#os.system('ln -s ../%s %s' % (filename, filename))
 log = ''
 def sp_search(f):
     spcmd = 'single_pulse_search.py --noplot %s' % f
@@ -661,6 +666,7 @@ for f in [spdfile[i] for i in spdindex if spd_scores[i] < AI_cutoff_spd]:
     os.system('rm %s' % f)
     os.system('rm %s.ps' % f)
 
+#os.system('rm /dev/shm/%s' % filename)
 
 os.chdir(cwd)
 print  'FINISHED'
