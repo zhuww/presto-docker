@@ -420,14 +420,7 @@ def ACCEL_sift(zmax):
     # we get no ACCEL files...
     inffiles = glob.glob(globinf)
     candfiles = glob.glob(globaccel)
-    # Check to see if this is from a short search
-    if len(re.findall("_[0-9][0-9][0-9]M_" , inffiles[0])):
-        dmstrs = [x.split("DM")[-1].split("_")[0] for x in candfiles]
-    else:
-        dmstrs = [x.split("DM")[-1].split(".inf")[0] for x in inffiles]
-    dms = map(float, dmstrs)
-    dms.sort()
-    dmstrs = ["%.2f"%x for x in dms]
+
 
     # Read in all the candidates
     cands = sifting.read_candidates(candfiles, prelim_reject=False, track=True)
@@ -438,9 +431,19 @@ def ACCEL_sift(zmax):
     if len(cands):
         cands = sifting.remove_duplicate_candidates(cands)
 
+    '''
+    # Check to see if this is from a short search
+    if len(re.findall("_[0-9][0-9][0-9]M_" , inffiles[0])):
+        dmstrs = [x.split("DM")[-1].split("_")[0] for x in candfiles]
+    else:
+        dmstrs = [x.split("DM")[-1].split(".inf")[0] for x in inffiles]
+    dms = map(float, dmstrs)
+    dms.sort()
+    dmstrs = ["%.2f"%x for x in dms]
     # Remove candidates with DM problems
     if len(cands):
         cands = sifting.remove_DM_problems(cands, min_num_DMs, dmstrs, low_DM_cutoff)
+    '''#remove dm check
 
     # Remove candidates that are harmonically related to each other
     # Note:  this includes only a small set of harmonics
