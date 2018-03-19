@@ -2,7 +2,7 @@ version: '2'
 services:
   presto:
     build: .
-    #shm_size: 128gb
+    shm_size: 32gb
     container_name: presto
     volumes:
      - ~/work/:/work/
