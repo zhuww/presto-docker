@@ -15,6 +15,8 @@ print("docker cp ~/local/src/presto-docker/sifting.py %s:/home/psr/software/pres
 os.system("docker cp ~/local/src/presto-docker/sifting.py %s:/home/psr/software/presto/lib/python/"%container)
 print("docker cp ~/local/src/presto-docker/filterbankfile.py %s:/home/psr/software/presto/lib/python/"%container)
 os.system("docker cp ~/local/src/presto-docker/filterbankfile.py %s:/home/psr/software/presto/lib/python/"%container)
+print("docker cp ~/local/src/presto-docker/sigproc_fb.c %s:/home/psr/software/presto/lib/python/"%container)
+os.system("docker cp ~/local/src/presto-docker/sigproc_fb.c %s:/home/psr/software/presto/lib/python/"%container)
 print("docker cp ~/local/src/presto-docker/makezap.py %s:/home/psr/software/presto/bin/"%container)
 os.system("docker cp ~/local/src/presto-docker/makezap.py %s:/home/psr/software/presto/bin/"%container)
 print("docker cp ~/local/src/presto-docker/stopall %s:/usr/local/bin/"%container)
