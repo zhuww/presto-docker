@@ -13,6 +13,8 @@ print("docker cp ~/local/src/presto-docker/fastpipe %s:/home/psr/software/presto
 os.system("docker cp ~/local/src/presto-docker/fastpipe %s:/home/psr/software/presto/bin/"%container)
 print("docker cp ~/local/src/presto-docker/sifting.py %s:/home/psr/software/presto/lib/python/"%container)
 os.system("docker cp ~/local/src/presto-docker/sifting.py %s:/home/psr/software/presto/lib/python/"%container)
+print("docker cp ~/local/src/presto-docker/filterbankfile.py %s:/home/psr/software/presto/lib/python/"%container)
+os.system("docker cp ~/local/src/presto-docker/filterbankfile.py %s:/home/psr/software/presto/lib/python/"%container)
 print("docker cp ~/local/src/presto-docker/makezap.py %s:/home/psr/software/presto/bin/"%container)
 os.system("docker cp ~/local/src/presto-docker/makezap.py %s:/home/psr/software/presto/bin/"%container)
 print("docker cp ~/local/src/presto-docker/stopall %s:/usr/local/bin/"%container)
