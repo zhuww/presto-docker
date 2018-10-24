@@ -9,7 +9,7 @@ p = Popen(["docker","ps","-aq"],stdout=PIPE,stderr=PIPE)
 p.wait()
 
 #copy public keys into root and psr user directories
-container = "presto"
+container = "presto3"
 #print("docker cp ~/.ssh/id_rsa.pub %s:/root/.ssh/authorized_keys"%container)
 #os.system("docker cp ~/.ssh/id_rsa.pub %s:/root/.ssh/authorized_keys"%container)
 #print("docker cp ~/.ssh/id_rsa.pub %s:/home/psr/.ssh/authorized_keys"%container)
@@ -31,5 +31,5 @@ print("docker cp ./rrattrap_config.py %s:/home/psr/software/presto/lib/python/si
 os.system("docker cp ./rrattrap_config.py %s:/home/psr/software/presto/lib/python/singlepulse/"%container)
 print("docker cp ./obsys.dat %s:/home/psr/software/tempo/"%container)
 os.system("docker cp ./obsys.dat %s:/home/psr/software/tempo/"%container)
-print("docker cp ./misc_utils.c %s:/home/psr/software/presto/src"%container)
-os.system("docker cp ./misc_utils.c %s:/home/psr/software/presto/src/"%container)
+#print("docker cp ./misc_utils.c %s:/home/psr/software/presto/src"%container)
+#os.system("docker cp ./misc_utils.c %s:/home/psr/software/presto/src/"%container)

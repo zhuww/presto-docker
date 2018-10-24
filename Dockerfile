@@ -93,15 +93,16 @@ RUN apt-get -y clean
 ENV PIP_FIND_LINKS https://pypi.tuna.tsinghua.edu.cn/simple
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pip -U 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple setuptools -U
-RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scipy==0.19.0
-RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple numpy 
-RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple matplotlib 
-RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple astropy 
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scipy==0.19.1
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple numpy==1.13.3
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple matplotlib==2.1.0
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple astropy==2.0.8 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pyfits 
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple fitsio
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pywavelets
 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scikit-learn==0.12.1
-RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv theano==0.8
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv theano==0.8.1
 
 #COPY sshd_config /etc/ssh/sshd_config
 USER psr
@@ -125,8 +126,9 @@ WORKDIR $PSRHOME
 RUN wget http://www.atnf.csiro.au/people/pulsar/psrcat/downloads/psrcat_pkg.tar.gz && \
     tar -xvf psrcat_pkg.tar.gz -C $PSRHOME && \
     git clone git://git.code.sf.net/p/tempo/tempo && \
-    git clone https://github.com/zhuww/presto.git && \
     git clone https://github.com/scottransom/pyslalib.git 
+
+RUN git clone https://github.com/scottransom/presto.git 
 
 
 # Psrcat
@@ -136,12 +138,12 @@ WORKDIR $PSRHOME/psrcat_tar
 RUN /bin/bash makeit && \
     rm -f ../psrcat_pkg.tar.gz
 
-# PICS AI 
-#RUN git clone https://github.com/zhuww/ubc_AI.git
-#ENV PICS $PSRHOME/ubc_AI/
-#ENV PYTHONPATH $PSRHOME
-#RUN echo "alias pfdviewer='python $PICS/pfdviewer.py'" >> ~/.bashrc && \
-#    echo "alias quickclf='python $PICS/quickclf.py'" >> ~/.bashrc
+#PICS AI 
+RUN git clone https://github.com/zhuww/ubc_AI.git
+ENV PICS $PSRHOME/ubc_AI/
+ENV PYTHONPATH $PSRHOME
+RUN echo "alias pfdviewer='python $PICS/pfdviewer.py'" >> ~/.bashrc && \
+   echo "alias quickclf='python $PICS/batchclf.py'" >> ~/.bashrc
 
 # Tempo
 ENV TEMPO $PSRHOME/tempo
@@ -151,8 +153,9 @@ RUN ls -lrt
 RUN ./prepare && \
     ./configure --prefix=$PSRHOME/tempo && \
     make && \
-    make install && \
-    rm -rf .git
+    make install 
+    #&& \
+    #rm -rf .git
     #mv obsys.dat obsys.dat_ORIGINAL && \
     #wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/tempo/obsys.dat && \
 
@@ -161,22 +164,29 @@ ENV PYSLALIB $PSRHOME/pyslalib
 ENV PYTHONPATH $PYTHONPATH:$PYSLALIB/install
 WORKDIR $PYSLALIB
 RUN python setup.py install --record list.txt --prefix=$PYSLALIB/install && \
-    python setup.py clean --all && \
-    rm -rf .git
+    python setup.py clean --all 
+    #rm -rf .git
 
 #RUN pip uninstall scipy
 #RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple scipy==0.19.1
 
 # Presto
 ENV PRESTO $PSRHOME/presto
+#ENV PRESTO /home/psr/software/presto
 ENV PATH $PATH:$PRESTO/bin
 ENV LD_LIBRARY_PATH $PRESTO/lib
 ENV PYTHONPATH $PYTHONPATH:$PRESTO/lib/python
-WORKDIR $PRESTO/src
-RUN rm -rf ../.git
-#RUN make makewisdom
-RUN make prep && \
-    make
+
+#WORKDIR $PRESTO/src
+WORKDIR /home/psr/software/presto/src
+#RUN rm -rf ../.git
+RUN  echo $PRESTO 
+RUN  echo `pwd` 
+RUN  ls  | echo
+RUN  make makewisdom
+RUN  make prep
+RUN  make 
+RUN  make mpi
 WORKDIR $PRESTO/python/ppgplot_src
 #RUN mv _ppgplot.c _ppgplot.c_ORIGINAL && \
     #wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/ppgplot/_ppgplot.c
@@ -189,3 +199,5 @@ WORKDIR $HOME
 USER root
 EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D"]
+ENV DISPLAY :0
+#RUN apt-get install -y eog 

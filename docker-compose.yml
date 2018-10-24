@@ -1,9 +1,9 @@
 version: '2'
 services:
-  presto:
+  presto3:
     build: .
     shm_size: 32gb
-    container_name: presto
+    container_name: presto3
     volumes:
      - ~/work/:/work/
      - /tmp/.X11-unix:/tmp/.X11-unix:ro
@@ -14,7 +14,7 @@ services:
     expose:
      - "22"
     ports:
-     - "2223:22/tcp"
-    image: "mpifrpsr/presto"
+     - "2224:22/tcp"
+    image: "presto3"
     command: "/usr/sbin/sshd -D"  
     tty: false
