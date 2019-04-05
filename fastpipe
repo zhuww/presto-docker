@@ -30,7 +30,10 @@ try:
 except:
     maxDM = 3000 #max DM to search
 
-if minDM == maxDM:SingleDM=True
+if minDM == maxDM:
+    SingleDM=True
+else:
+    SingleDM=False
 
 Nsub = 128 #32 subbands
 Nbin = 64 #64 sub integration
