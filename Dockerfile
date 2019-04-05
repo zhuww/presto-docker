@@ -85,7 +85,10 @@ RUN apt-get --no-install-recommends -y install \
     openbox \
     imagemagick \
     vim \
+    latex2html \
     && rm -rf /var/lib/apt/lists/* 
+
+#RUN apt-get install -y parallel
 
 RUN apt-get -y clean
 
@@ -103,6 +106,9 @@ RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pywavelets
 
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv scikit-learn==0.12.1
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -Iv theano==0.8.1
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pika
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple redis
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple rq
 
 #COPY sshd_config /etc/ssh/sshd_config
 USER psr
@@ -123,10 +129,10 @@ ENV PGPLOT_DEV /xs
 WORKDIR $PSRHOME
 
 # Pull all repos
-RUN wget http://www.atnf.csiro.au/people/pulsar/psrcat/downloads/psrcat_pkg.tar.gz && \
-    tar -xvf psrcat_pkg.tar.gz -C $PSRHOME && \
-    git clone git://git.code.sf.net/p/tempo/tempo && \
-    git clone https://github.com/scottransom/pyslalib.git 
+RUN wget http://www.atnf.csiro.au/people/pulsar/psrcat/downloads/psrcat_pkg.tar.gz  
+RUN tar -xvf psrcat_pkg.tar.gz -C $PSRHOME 
+RUN git clone git://git.code.sf.net/p/tempo/tempo
+RUN git clone https://github.com/scottransom/pyslalib.git 
 
 RUN git clone https://github.com/scottransom/presto.git 
 
@@ -139,6 +145,7 @@ RUN /bin/bash makeit && \
     rm -f ../psrcat_pkg.tar.gz
 
 #PICS AI 
+WORKDIR $PSRHOME
 RUN git clone https://github.com/zhuww/ubc_AI.git
 ENV PICS $PSRHOME/ubc_AI/
 ENV PYTHONPATH $PSRHOME
@@ -192,7 +199,7 @@ WORKDIR $PRESTO/python/ppgplot_src
     #wget https://raw.githubusercontent.com/mserylak/pulsar_docker/master/ppgplot/_ppgplot.c
 WORKDIR $PRESTO/python
 RUN make && \
-    echo "export PYTHONPATH=$PYTHONPATH:$PRESTO/lib/python" >> ~/.bashrc
+    echo "export PYTHONPATH=$PYTHONPATH:$PRESTO/lib/python:$PSRHOME" >> ~/.bashrc
 
 RUN env | awk '{print "export ",$0}' >> $HOME/.profile
 WORKDIR $HOME

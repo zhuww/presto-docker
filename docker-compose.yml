@@ -3,11 +3,12 @@ services:
   presto3:
     build: .
     shm_size: 32gb
-    container_name: presto3
+    container_name: 10.134.1.60:5000/admin/presto
     volumes:
      - ~/work/:/work/
      - /tmp/.X11-unix:/tmp/.X11-unix:ro
      - "/var/run/docker.sock:/var/run/docker.sock"
+     - ~/data/:/data/
     environment:
      - DISPLAY=$DISPLAY
     hostname: localhost
@@ -15,6 +16,6 @@ services:
      - "22"
     ports:
      - "2224:22/tcp"
-    image: "presto3"
+    image: "10.134.1.60:5000/admin/presto"
     command: "/usr/sbin/sshd -D"  
     tty: false

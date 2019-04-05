@@ -81,6 +81,7 @@ class PsrfitsFile(object):
         self.freqs = self.fits['SUBINT'].data[0]['DAT_FREQ'] 
         self.frequencies = self.freqs # Alias
         self.tsamp = self.specinfo.dt
+        self.nspec = self.specinfo.N
 
     def read_subint(self, isub, apply_weights=True, apply_scales=True, \
                     apply_offsets=True):
@@ -126,8 +127,11 @@ class PsrfitsFile(object):
                 data = np.zeros((self.nsamp_per_subint,
                                  self.nchan), dtype=np.float32)
                 data += sdata[:,0,:].squeeze()
+            elif (len(shp)==3 and shp[1]==self.npoln):
+                data = sdata.sum(axis=1).squeeze()
             else:
                 data = np.asarray(sdata)
+        print 'here is the shape:', data.shape, self.npoln
         data = data.reshape((self.nsamp_per_subint, 
                              self.nchan)).astype(np.float32)
         if apply_scales: data *= self.get_scales(isub)[:self.nchan]

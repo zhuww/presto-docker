@@ -29,28 +29,36 @@ try:
     maxDM = sys.argv[4]
 except:
     maxDM = 3000 #max DM to search
+
+if minDM == maxDM:SingleDM=True
+
 Nsub = 128 #32 subbands
 Nbin = 64 #64 sub integration
 Tres = 0.5 #ms 
 npfact = 1
 zmax = 0
+wmax = 0
 numharm = 32 #32 too large leads to accelsearch crash
 N_thread = MP.cpu_count() - 1
+#N_thread = 15
 zerodm = False
 rfifind_inttime = 0.1
 invert = False
 sigma_threshold = 3.
 min_period = 0.0005 #0.1
 max_period = 20. #15
-AI_cutoff_pfd = 0.05
+AI_cutoff_pfd = 0.2
 AI_cutoff_spd = 0.0
+resultdir='../results/'
 clobber = True
 
 """The SKIP flags"""
-rfifind_skip = False
+rfifind_skip = True
 dedisperse_skip = False
 fft_accelsearch_skip = False
 sift_fold_skip = False
+prepfold_skip = False
+Single_Pulse_Search_Skip = True
 
 currdir = sys.argv[1]
 os.chdir(currdir)
@@ -65,6 +73,7 @@ if len(sys.argv) > 5:
         sift_fold_skip = True
     else:
         zmax = int(sys.argv[5])
+        wmax = int(sys.argv[6])
 
 maskfile = None
 
@@ -146,54 +155,55 @@ print '''
 
 '''
 
-try:
-    Nchan = int(header['Number of channels'])
-    tsamp = float(header['Sample time (us)']) * 1.e-6
-    BandWidth = float(header['Total Bandwidth (MHz)'])
-    fcenter = float(header['Central freq (MHz)'])
-    Nsamp = int(header['Spectra per file'])
-    Duration = float(header['Time per file (sec)'])
+if not SingleDM:
+    try:
+        Nchan = int(header['Number of channels'])
+        tsamp = float(header['Sample time (us)']) * 1.e-6
+        BandWidth = float(header['Total Bandwidth (MHz)'])
+        fcenter = float(header['Central freq (MHz)'])
+        Nsamp = int(header['Spectra per file'])
+        Duration = float(header['Time per file (sec)'])
 
-    if Nsub > Nchan: Nsub = Nchan
+        if Nsub > Nchan: Nsub = Nchan
+
+        if Tutorial_Mode:
+            query("Input file has how many frequency channel?", Nchan, int)
+            query("what is the total bandwidth?", BandWidth, float)
+            query("what is the size of each time sample in us?", tsamp*1.e6, float)
+            query("what's the center frequency?", fcenter, float)
+            print 'see how these numbers are used in the next step.'
+            print ''
+
+        ddplancmd = 'DDplan.py -l %(minDM)s -d %(maxDM)s -n %(Nchan)d -b %(BandWidth)s -t %(tsamp)f -f %(fcenter)f -s %(Nsub)s -r %(Tres)s -o %(workdir)s/DDplan.ps' % {
+                'minDM':minDM, 'maxDM':maxDM, 'Nchan':Nchan, 'tsamp':tsamp, 'BandWidth':BandWidth, 'fcenter':fcenter, 'Nsub':Nsub, 'Tres':Tres, 'workdir':workdir}
+        print ddplancmd
+        status, ddplanout = getoutput(ddplancmd)
+        print ddplanout
+        planlist = ddplanout.split('\n')
+        ddplan = []
+        planlist.reverse()
+        for plan in planlist:
+            if plan == '':
+                continue
+            elif plan.strip().startswith('Low DM'):
+                break
+            else:
+                ddplan.append(plan)
+        ddplan.reverse()
+    except:
+        print 'failed at generating DDplan.'
+        print sys.exc_info()[0]
+        sys.exit(0)
+
 
     if Tutorial_Mode:
-        query("Input file has how many frequency channel?", Nchan, int)
-        query("what is the total bandwidth?", BandWidth, float)
-        query("what is the size of each time sample in us?", tsamp*1.e6, float)
-        query("what's the center frequency?", fcenter, float)
+        calls = 0
+        for line in ddplan:
+            ddpl = line.split()
+            calls += int(ddpl[7])
+        query("According to the DDplan, how many times in total do we have to call prepsubband?", calls, int)
         print 'see how these numbers are used in the next step.'
         print ''
-
-    ddplancmd = 'DDplan.py -l %(minDM)s -d %(maxDM)s -n %(Nchan)d -b %(BandWidth)s -t %(tsamp)f -f %(fcenter)f -s %(Nsub)s -r %(Tres)s -o %(workdir)s/DDplan.ps' % {
-            'minDM':minDM, 'maxDM':maxDM, 'Nchan':Nchan, 'tsamp':tsamp, 'BandWidth':BandWidth, 'fcenter':fcenter, 'Nsub':Nsub, 'Tres':Tres, 'workdir':workdir}
-    print ddplancmd
-    status, ddplanout = getoutput(ddplancmd)
-    print ddplanout
-    planlist = ddplanout.split('\n')
-    ddplan = []
-    planlist.reverse()
-    for plan in planlist:
-        if plan == '':
-            continue
-        elif plan.strip().startswith('Low DM'):
-            break
-        else:
-            ddplan.append(plan)
-    ddplan.reverse()
-except:
-    print 'failed at generating DDplan.'
-    print sys.exc_info()[0]
-    sys.exit(0)
-
-
-if Tutorial_Mode:
-    calls = 0
-    for line in ddplan:
-        ddpl = line.split()
-        calls += int(ddpl[7])
-    query("According to the DDplan, how many times in total do we have to call prepsubband?", calls, int)
-    print 'see how these numbers are used in the next step.'
-    print ''
 
 
 print '''
@@ -202,32 +212,33 @@ print '''
 
 '''
 if not rfifind_skip:
-    try:
-        if not os.access(workdir, os.F_OK):
-            os.mkdir(workdir)
-        os.chdir(workdir)
-        logfile  = open('rfifind.log', 'wt')
-        #os.system('cp ../%s /dev/shm/' % filename)
-        #os.symlink(('/dev/shm/%s' % filename), ('./%s' % filename))
+    #try:
+    if not os.access(workdir, os.F_OK):
+        os.mkdir(workdir)
+    os.chdir(workdir)
+    logfile  = open('rfifind.log', 'wt')
+    #os.system('cp ../%s /dev/shm/' % filename)
+    #os.symlink(('/dev/shm/%s' % filename), ('./%s' % filename))
+    if not os.access(filename, os.F_OK):
         os.symlink(('../%s' % filename), ('./%s' % filename))
-        #rfifind = "rfifind -ncpus %d -time %f -o %s ../%s" % (N_thread, rfifind_inttime, rootname, filename)
-        makezap = "python ~/software/presto/bin/makezap.py ./%s" % filename
-        print makezap
-        status, output = getoutput(makezap)
-        print output
-        rfifind = "rfifind -ncpus %d -time %f -zapchan `cat chans.zap`  -o %s ./%s" % (N_thread, rfifind_inttime, rootname, filename)
-        print rfifind
-        status, output = getoutput(rfifind)
-        logfile.write(output)
-        logfile.close()
-        maskfile = rootname + '_rfifind.mask'
-        statfile = rootname + '_rfifind.stats'
-        os.chdir(cwd)
-    except:
-        print 'failed at rfifind.'
-        print sys.exc_info()[0]
-        os.chdir(cwd)
-        sys.exit(0)
+    #rfifind = "rfifind -ncpus %d -time %f -o %s ../%s" % (N_thread, rfifind_inttime, rootname, filename)
+    #makezap = "python /work/combine/makezap.py ./%s" % filename
+    #print makezap
+    #status, output = getoutput(makezap)
+    #print output
+    rfifind = "rfifind -ncpus %d -time %f -zapchan `cat /work/M31/badchan.txt`  -o %s ./%s" % (N_thread, rfifind_inttime, rootname, filename)
+    print rfifind
+    status, output = getoutput(rfifind)
+    logfile.write(output)
+    logfile.close()
+    maskfile = rootname + '_rfifind.mask'
+    statfile = rootname + '_rfifind.stats'
+    os.chdir(cwd)
+    #except:
+        #print 'failed at rfifind.'
+        #print sys.exc_info()[0]
+        #os.chdir(cwd)
+        #sys.exit(0)
 else:
     maskfile_tmp = rootname + '_rfifind.mask'
     statfile_tmp = rootname + '_rfifind.mask'
@@ -247,7 +258,7 @@ print '''
 '''
 if not dedisperse_skip:
     #try:
-    if True:
+    if not SingleDM:
         if not os.access(workdir, os.F_OK):
             os.mkdir(workdir)
         os.chdir(workdir)
@@ -271,13 +282,13 @@ if not dedisperse_skip:
 
             def subbandproc(i, dml):
                 lodm = dml[0]
-                #hidm = dml[-1]
-                #target = rootname + "_DM%.2f.dat" % hidm
-                #if os.access(target, os.R_OK):
-                    #filesize = os.path.getsize(target)
-                    #if not filesize == 0:
-                        #print "%s file (%s in size) exist; skipped." % (target, filesize)
-                        #return "%s file (%s in size) exist; skipped." % (target, filesize)
+                hidm = dml[-1]
+                target = rootname + "_DM%.2f.dat" % hidm
+                if os.access(target, os.R_OK):
+                    filesize = os.path.getsize(target)
+                    if not filesize == 0:
+                        print "%s file (%s in size) exist; skipped." % (target, filesize)
+                        return "%s file (%s in size) exist; skipped." % (target, filesize)
                 subDM = np.mean(dml)
                 if zerodm:
                     zerodmtag = '-zerodm'
@@ -310,10 +321,20 @@ if not dedisperse_skip:
 
     #except:
     else:
-        print 'failed at prepsubband.'
-        print sys.exc_info()[0]
+        #print 'failed at prepsubband.'
+        #print sys.exc_info()[0]
+        if not os.access(workdir, os.F_OK):
+            os.mkdir(workdir)
+        os.chdir(workdir)
+
+        prepdatacmd = "prepdata -ncpus %(ncpus)d %(invert)s -dm %(DM)s  -mask %(mask)s -o %(root)s %(filename)s" % {
+                'DM':minDM, 'mask':maskfile, 'root':rootname+"_DM%.2f" % float(minDM), 'filename':filename, 'invert':inverttag, 'ncpus':N_thread}
+        print prepdatacmd 
+        status, output2 = getoutput(prepdatacmd)
+        logfile = open('dedisperse.log', 'wt')
+        logfile.write(output2)
+        logfile.close()
         os.chdir(cwd)
-        sys.exit(0)
 else:
     print "skipped dedisperse"
 
@@ -324,63 +345,74 @@ print '''
 
 '''
 if not fft_accelsearch_skip:
-    try:
-        os.chdir(workdir)
-        datfiles = glob.glob("*.dat")
-        logfile = open('fft.log', 'wt')
+    #try:
+    os.chdir(workdir)
+    datfiles = glob.glob("*.dat")
+    logfile = open('fft.log', 'wt')
 
-        def fftsearch(df):
-            fftf = '.'.join(df.split('.')[:-1]) + '.fft'
-            #print 'to fft the file:', df, type(df), fftf
-            #print 'to generate:', fftf
-            target = fftf
-            #print  cwd+'/'+workdir+'/'+target, os.access( cwd+'/'+workdir+'/'+target, os.R_OK), (os.path.getsize(cwd+'/'+workdir+'/'+target == 0)
-            if not clobber and os.access(cwd+'/'+workdir+'/'+target, os.R_OK) and (not os.path.getsize(cwd+'/'+workdir+'/'+target) == 0):
-                print "%s file exist; skipped." % target
-                output = "%s file exist; skipped." % target
-            else:
-                fftcmd = "realfft %s" % df
-                print fftcmd
-                status, output = getoutput(fftcmd)
-            output += '\n'
-            target = '.'.join(df.split('.')[:-1]) + ('_ACCEL_%d' % zmax)
-            #print  cwd+'/'+workdir+'/'+target, os.access( cwd+'/'+workdir+'/'+target, os.R_OK), os.path.getsize(cwd+'/'+workdir+'/'+target == 0
-            if not clobber and os.access(cwd+'/'+workdir+'/'+target, os.R_OK) and (not os.path.getsize(cwd+'/'+workdir+'/'+target)  == 0):
-                print "%s file exist; skipped." % target
-                output = "%s file exist; skipped." % target
-            else:
-                #searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (numharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
-                #print searchcmd
-                #status, tmp = getoutput(searchcmd)
-                status = 1
-                localnumharm = numharm * 2
-                while status > 0 and localnumharm > 4:
-                    localnumharm /= 2
-                    #searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
-                    searchcmd = "accelsearch -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
-                    print searchcmd
-                    status, tmp = getoutput(searchcmd)
-                output += ("accelsearch exit status code %s \n%s" % (status, tmp))
-            return output
-        outputs = spamit(hamster, [[['.'.join(df.split('.')[:-1]) + '.inf', df], ['*.fft', '*.txtcand', '*.cand', ('*ACCEL_%d' % zmax)], fftsearch, [df]] for df in datfiles], num_threads=N_thread)
-        logfile.write('\n'.join(outputs))
-        logfile.close()
-        os.chdir(cwd)
-    except:
-        print 'failed at fft search.'
-        print sys.exc_info()[0]
-        os.chdir(cwd)
-        sys.exit(0)
+    def fftsearch(df):
+        fftf = '.'.join(df.split('.')[:-1]) + '.fft'
+        #print 'to fft the file:', df, type(df), fftf
+        #print 'to generate:', fftf
+        target = fftf
+        #print  cwd+'/'+workdir+'/'+target, os.access( cwd+'/'+workdir+'/'+target, os.R_OK), (os.path.getsize(cwd+'/'+workdir+'/'+target == 0)
+        if not clobber and os.access(cwd+'/'+workdir+'/'+target, os.R_OK) and (not os.path.getsize(cwd+'/'+workdir+'/'+target) == 0):
+            print "%s file exist; skipped." % target
+            output = "%s file exist; skipped." % target
+        else:
+            fftcmd = "realfft %s" % df
+            print fftcmd
+            status, output = getoutput(fftcmd)
+        output += '\n'
+        #target = '.'.join(df.split('.')[:-1]) + ('_ACCEL_%d' % zmax)
+        if wmax > 0:
+            target = '.'.join(df.split('.')[:-1]) + ('_ACCEL_%d_JERK_%d' % (zmax,wmax))
+        else:
+            target = '.'.join(df.split('.')[:-1]) + ('_ACCEL_%d' % (zmax))
+        print target
+        #print  cwd+'/'+workdir+'/'+target, os.access( cwd+'/'+workdir+'/'+target, os.R_OK), os.path.getsize(cwd+'/'+workdir+'/'+target == 0
+        if not clobber and os.access(cwd+'/'+workdir+'/'+target, os.R_OK) and (not os.path.getsize(cwd+'/'+workdir+'/'+target)  == 0):
+            print "%s file exist; skipped." % target
+            output = "%s file exist; skipped." % target
+        else:
+            #searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (numharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+            #print searchcmd
+            #status, tmp = getoutput(searchcmd)
+            status = 1
+            localnumharm = numharm * 2
+            while status > 0 and localnumharm > 4:
+                localnumharm /= 2
+                #searchcmd = "accelsearch -inmem -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                if wmax == 0:
+                    searchcmd = "accelsearch -ncpus 2 -numharm %d -zmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                else:
+                    searchcmd = "accelsearch -ncpus 2 -numharm %d -zmax %d -wmax %d -sigma %f -flo %f -fhi %f  %s"  % (localnumharm, zmax, wmax, sigma_threshold, 1./max_period, 1./min_period, fftf)
+                print searchcmd
+                status, tmp = getoutput(searchcmd)
+            output += ("accelsearch exit status code %s \n%s" % (status, tmp))
+        return output
+    outputs = spamit(hamster, [[['.'.join(df.split('.')[:-1]) + '.inf', df], ['*.fft', '*ACCEL*', '*.txtcand', '*.cand'], fftsearch, [df]] for df in datfiles], num_threads=N_thread)
+    logfile.write('\n'.join(outputs))
+    logfile.close()
+    os.chdir(cwd)
+    #except:
+        #print 'failed at fft search.'
+        #print sys.exc_info()[0]
+        #os.chdir(cwd)
+        #sys.exit(0)
 else:
     print "fft & accelsearch skipped."
 
 
-def ACCEL_sift(zmax):
+def ACCEL_sift(zmax,wmax):
     '''
     The following code come from PRESTO's ACCEL_sift.py
     '''
 
-    globaccel = "*ACCEL_%d" % zmax
+    if wmax > 0:
+        globaccel = "*ACCEL_%d_JERK_%d" % (zmax, wmax)
+    else:
+        globaccel = "*ACCEL_%d" % (zmax)
     globinf = "*DM*.inf"
     # In how many DMs must a candidate be detected to be considered "good"
     min_num_DMs = 1
@@ -426,6 +458,8 @@ def ACCEL_sift(zmax):
     cands = sifting.read_candidates(candfiles, prelim_reject=False, track=True)
     #candslst = spamit(sifting.read_candidates, [[candfile] for candfile in candfiles], num_threads=N_thread)
     #cands = SUM(candslst, [])
+    if len(cands) == 0:
+        print '***', candfiles, 'has no candidates!!!'
 
     # Remove candidates that are duplicated in other ACCEL files
     if len(cands):
@@ -462,7 +496,7 @@ def ACCEL_sift(zmax):
         #sifting.write_candlist(cands)
     return cands
 
-if not sift_fold_skip:
+if not (sift_fold_skip or ((not clobber) and os.access('shortlist.txt', os.F_OK))):
 
     print '''
 
@@ -470,15 +504,18 @@ if not sift_fold_skip:
 
 '''
 
-    try:
-        os.chdir(workdir)
-        cands = ACCEL_sift(zmax)
-        os.chdir(cwd)
-    except:
-        print 'failed at sifting candidates.'
-        print sys.exc_info()[0]
-        os.chdir(cwd)
-        sys.exit(0)
+    #try:
+
+    os.chdir(workdir)
+    cands = ACCEL_sift(zmax, wmax)
+    os.chdir(cwd)
+
+
+    #except:
+        #print 'failed at sifting candidates.'
+        #print sys.exc_info()[0]
+        #os.chdir(cwd)
+        #sys.exit(0)
 
 
     print '''
@@ -497,179 +534,318 @@ if not sift_fold_skip:
         slowflag = ''
         if cand .p > 0.4:
             slowflag = '-slow'
-            Nsub = 128
-            Nbin = 128
+            nsub = 128
+            nbin = 128
+        else:
+            nsub = Nsub
+            nbin = Nbin
             #Npart = '-npart %d' % 2**int(np.log(52.4228 / cand.p)/np.log(2))
-            Npart = '-npart %d' % 2**int(np.log(Duration / cand.p)/np.log(2))
-        else:
-            Npart = ''
-        if maskfile:
-            foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -mask ../%(maskfile)s -o %(outfile)s -noxwin -nodmsearch" % {
-                    'slowflag':slowflag, 'Npart':Npart, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag, 'maskfile':maskfile} #full plots
-            print foldcmd
-        else:
-            foldcmd = "prepfold %(invert)s %(slowflag)s %(Npart)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
-                    'slowflag':slowflag, 'Npart':Npart, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag } #full plots
-            print foldcmd
+            #Npart = '-npart %d' % 2**int(np.log(Duration / cand.p)/np.log(2))
+        #else:
+            #Npart = ''
+        #if maskfile:
+             #foldcmd = "prepfold -ncpus 2 %(invert)s %(slowflag)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -accelcand %(candnum)d -accelfile %(candfile)s -npfact %(npfact)d %(filfile)s -mask ../%(maskfile)s -o %(outfile)s -noxwin -nodmsearch" % {
+            #'slowflag':slowflag, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM, 'candnum':cand.candnum, 'candfile':cand.filename+".cand",  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag, 'maskfile':maskfile} #full plots
+            #print foldcmd
+        #else:
+
+        #foldcmd = "prepfold -ncpus 2 %(invert)s %(slowflag)s -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -accelcand %(candnum)d -accelfile %(candfile)s  -npfact %(npfact)d %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
+                #'slowflag':slowflag, 'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'candnum':cand.candnum, 'candfile':cand.filename+".cand",  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag } #full plots
+
+        foldcmd = "prepfold -ncpus 2 %(invert)s %(slowflag)s -n %(Nbin)d -accelcand %(candnum)d -accelfile %(candfile)s %(datfile)s -o %(outfile)s -nodmsearch -nopsearch -nosearch" % {
+                'slowflag':slowflag, 'Nbin':nbin, 'Nsub':nsub,  'candnum':int(cand.candnum), 'candfile':str(cand.filename)+".cand",  'period':cand.p, 'npfact':npfact, 'datfile':rootname+'_DM'+cand.DMstr+'.dat', 'outfile':rootname+'_DM'+cand.DMstr, 'invert':inverttag } #full plots
+        print foldcmd
         #os.system(foldcmd)
         status, output = getoutput(foldcmd)
         return output
 
+    #outputs = spamit(hamster, [[[filename], ['*.pfd'], foldproc, [cand]] for cand in cands], num_threads=N_thread)
 
+    outputs = spamit(foldproc, [[cand] for cand in cands])
     #for cand in cands:
-        ##print cand.__dict__.keys()
-        ##foldcmd = "prepfold -dm %(dm)f -accelcand %(candnum)d -accelfile %(accelfile)s %(datfile)s -noxwin " % {
-        ##'dm':cand.DM,  'accelfile':cand.filename+'.cand', 'candnum':cand.candnum, 'datfile':('%s_DM%s.dat' % (rootname, cand.DMstr))} #simple plots
-        #foldcmd = "prepfold -n %(Nbin)d -nsub %(Nsub)d -dm %(dm)f -p %(period)f -npfact %(npfact)d %(filfile)s -o %(outfile)s -noxwin -nodmsearch" % {
-                #'Nbin':Nbin, 'Nsub':Nsub, 'dm':cand.DM,  'period':cand.p, 'npfact':npfact, 'filfile':filename, 'outfile':rootname+'_DM'+cand.DMstr} #full plots
-        #print foldcmd
-        ##os.system(foldcmd)
-        #status, output = getoutput(foldcmd)
+        #foldproc(cand)
 
-    if maskfile:
-        outputs = spamit(hamster, [[[filename], ['*.pfd'], foldproc, [cand]] for cand in cands], num_threads=N_thread)
-    else:
-        outputs = spamit(hamster, [[[filename], ['*.pfd'], foldproc, [cand]] for cand in cands], num_threads=N_thread)
 
-    #os.system('python ~/software/ubc_AI/quickclf.py')
-    #os.system('sort -g -k 2 -r clfresult.txt > tmp')
-    #os.system('mv tmp clfresult.txt')
-
-        #convertcmd = 'convert -rotate 90 %s.ps %s.png' % (f, f)
-        #print convertcmd
-        #os.system(convertcmd)
 
     logfile.write('\n'.join(outputs))
     logfile.close()
-    os.chdir(cwd)
+
+    import ubc_AI, cPickle, os, sys, glob
+    from psrcatlog import psrcat, harm_ratio
+    from astropy.coordinates import SkyCoord
+    from astropy import units
+    from ubc_AI.prepfold import pfd as PFD
+    from ubc_AI.classifier  import extractfeatures
+    from ubc_AI.data import pfdreader
+
+    AI_PATH = '/'.join(ubc_AI.__file__.split('/')[:-1])
+    comb_clf = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_PALFA.pkl','rb'))
+    clfcnn = comb_clf.list_of_AIs[1]
+
+    ##Check the pfd in bestlist.txt
+    #txtfile = open("bestlist.txt", "r")
+    #data = txtfile.readlines()
+    #txtfile.close()
+    atnfcatlog = cPickle.load(open("/work/M31/ATNFcatlog.pkl", 'rb'))
+    atnfcatlog.init()
+
+    from collections import defaultdict
+    allcands = defaultdict(list)
+    text = ""
+    pfdlist = glob.glob('*_Cand_*.pfd')
+    rpfds = [pfdreader(pfd) for pfd in pfdlist]
+    badlist = []
+    badrpfds = []
+    try:
+        extractfeatures([clfcnn], rpfds)
+    except:
+        for i, rpfd in enumerate(rpfds):
+            try:
+                extractfeatures([clfcnn], [rpfd])
+            except:
+                badlist.append(pfdlist[i])
+                badrpfds.append(rpfd)
+
+    for badpfd in badlist:
+        pfdlist.remove(badpfd)
+    for badrpfd in badrpfds:
+        rpfds.remove(badrpfd)
+
+    print 'length of useable pfds:', len(rpfds)
+
+    def classify(rpfd):
+        #apfd = PFD(pfd)
+        #rpfd = pfdreader(pfd)
+        try:
+            #extractfeatures([clfcnn], [rpfd])
+            prediction = clfcnn.predict_proba([rpfd])[:,1][0]
+        except:
+            prediction = -1.
+        return prediction
+
+    #try:
+    #predictions = classify(pfdlist)
     #except:
-        #print 'failed at folding candidates.'
-        #os.chdir(cwd)
-        #sys.exit(0)
+    predictions = spamit(classify, [[rpfd]  for rpfd in rpfds] )
+
+    for i,pfd in enumerate(pfdlist):
+        prediction = predictions[i]
+
+        if prediction > AI_cutoff_pfd:
+            apfd = PFD(pfdlist[i])
+            RA, Dec, DM, p0, sigma = apfd.rastr, apfd.decstr, apfd.bestdm, apfd.bary_p1, apfd.calc_redchi2()
+            dm = apfd.bestdm
+            try:
+                period = apfd.bary_p1
+            except:
+                period = apfd.topo_p1
+            """find known pulsar in the beam"""
+            sc = SkyCoord(apfd.rastr, apfd.decstr, unit=(units.hourangle, units.deg))
+            Gl = sc.galactic.l.degree
+            Gb = sc.galactic.b.degree
+            matchs = atnfcatlog.match(Gl, Gb, dm, period)
+            if len(matchs) > 0:
+                text += pfd + " %f %f %.2f %f" % (prediction, p0, dm, sigma) + ";".join([("%s(%d/%d + %.2g)" % m) for m in matchs]) + '\n'
+            else:
+                text += pfd + " %f %f %.2f %f\n" % (prediction, p0, dm, sigma) 
+            allcands[str(p0)].append((dm, sigma, pfd, prediction, p0))
+
+    with open('clfresult.txt', 'w') as fout:
+        fout.write(text)
+        fout.close()
+
+    for period in allcands.keys():
+        binarydata = np.array(allcands[period])
+        #print binarydata.shape
+        #if len(allcands[period]) >= 5 and (binarydata[...,0].astype(float).max() - binarydata[...,0].astype(float).min())/binarydata[...,0].astype(float).min() > 0.7:
+            #del allcands[period]
+        #else:
+        allcands[period] = sorted(binarydata, key=lambda x:x[1])[-1]
+
+    text = ""
+    topcands = []
+    for period in allcands:
+        pfd = allcands[period][2]
+        #print period, allcands[period][3], period, allcands[period][1], type(allcands[period][3]), type(period), type(allcands[period][1])
+        text += pfd + " %f %f %.2f %f" % (float(allcands[period][3]), float(allcands[period][4]), float(allcands[period][0]), float(allcands[period][1])) + '\n'
+        topcands.append(pfd)
+    with open('shortlist.txt', 'w') as fout:
+        fout.write(text)
+        fout.close()
+ 
 else:
     print "sift & fold skipped."
-
-
-    print '''
-
-================single pulse search==================
-
-'''
+os.chdir(cwd)
 
 os.chdir(workdir)
-#os.system('ln -s ../%s %s' % (filename, filename))
-log = ''
-def sp_search(f):
-    spcmd = 'single_pulse_search.py --noplot %s' % f
-    status, output = getoutput(spcmd)
-    return output 
+if not prepfold_skip:
+    topcands = np.genfromtxt("shortlist.txt", dtype=[('pfds', '|S200'), ('rateing', 'f'), ('period', 'f'), ('dm', 'f'), ('sigma', 'f')])['pfds']
+    #print topcands
 
-inffile = glob.glob('*_rfifind.inf')[0]
-rrattrapcmd = 'rrattrap.py --inffile %s *.singlepulse' % inffile
-make_spd_cmd = 'make_spd.py --mask -s 64 %s  --groupsfile=groups.txt --maskfile=%s *.singlepulse' % (filename, maskfile)
+    def prepfold(i, candfile, infile, dm, maskfile):
+        basename = infile[3:-5]
+        prepfold = 'prepfold -accelcand %d -accelfile %s %s -dm %s -mask %s -o %s -nosearch -nopsearch -nopdsearch' % (i, candfile, infile, dm, maskfile, resultdir+basename+'_DM%s' % dm)
+        print prepfold
+        status, output = getoutput(prepfold)
 
-log += '\n\n'
-output = '\n'.join(spamit(sp_search, [[f] for f in glob.glob('*.dat')]))
-log += output
-log += '\n\n'
-print rrattrapcmd
-status, output = getoutput(rrattrapcmd)
-log += output
-log += '\n\n'
-print make_spd_cmd
-status, output = getoutput(make_spd_cmd)
-log += output
-
-with open('singlepulse.log', 'w') as fo:
-    fo.write(log)
-os.system('rm *.dat')
-os.system('rm *.fft')
-
-import cPickle, glob, ubc_AI
-from ubc_AI.data import pfdreader
-from ubc_AI.prepfold import pfd
-from astropy.time import Time
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-AI_PATH = '/'.join(ubc_AI.__file__.split('/')[:-1])
-classifier = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_PALFA.pkl','rb'))
-#classifier = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_BD.pkl','rb'))
-pfdfile = glob.glob('*.pfd') 
-spdfile = glob.glob('*.spd')
-if len(pfdfile) > 0:
-    try:
-        pfd_scores = np.array(classifier.report_score([pfdreader(f) for f in pfdfile]))
-    except:
-        pfd_scores = []
-        for f in pfdfile:
-            try:
-                score = classifier.report_score([f])
-            except:
-                score = -1.
-            pfd_scores.append(score)
-
-else:
-    pfd_scores = np.array([])
-if len(spdfile) > 0:
-    spd_scores = np.array(classifier.report_score([pfdreader(f) for f in spdfile]))
-else:
-    spd_scores = np.array([])
-AI_scores = np.hstack((pfd_scores, spd_scores))
-allfile = np.hstack((pfdfile, spdfile))
-
-argindex = np.argsort(AI_scores)[::-1]
-pfdindex = np.argsort(pfd_scores)[::-1]
-spdindex = np.argsort(spd_scores)[::-1]
-
-#text = '\n'.join(['%s %s' % (allfile[i], AI_scores[i]) for i in argindex])
-info = []
-for i in argindex:
-    name = allfile[i]
-    rating = AI_scores[i]
-    ibeam = 0
-    idx = i
-    if name.endswith('pfd') and AI_scores[i] > AI_cutoff_pfd:
-        apfd = pfd(name)
-        DM = apfd.bestdm
-        T = apfd.topo_p1 #period
-        width = apfd.topo_p2 #Pdot
-        mjd = str(apfd.mid_topo_MJDs.mean())
-        ra = apfd.rastr
-        dec = apfd.decstr
-        sigma = apfd.calc_redchi2()
-    elif name.endswith('spd') and AI_scores[i] > AI_cutoff_spd:
-        text_array = np.load(name)['text_array']
-        DM = float(text_array[8])
-        mjd = str(text_array[4])
-        ra = text_array[2]
-        dec = text_array[3]
-        width = float(text_array[13])
-        #duration = float(text_array[11])
-        T = float(text_array[16])
-        sigma = float(text_array[9])
-    else:
-        continue
-    ObsDate = Time(float(mjd), format='mjd').datetime
-    date = ObsDate.strftime("%Y-%m-%d")
-    time = ObsDate.strftime("%H:%M:%S")
-    sc = SkyCoord(ra+' '+dec,unit=(u.hourangle, u.deg))
-    gl = sc.galactic.l.deg
-    gb = sc.galactic.b.deg
-
-    info.append(' '.join([str(item) for item in [name, DM, T, date, time, mjd, ibeam, idx, sigma, width, gl, gb, rating]]))
+    pars = []
+    for f in topcands:
+        try:
+            p1,p2 = f.split('_JERK')
+        except:
+            p1,p2 = f.split('_ACCEL')
+        if wmax > 0:
+            candfile = glob.glob(p1+"_ACCEL_%d_JERK_%d.cand" % (zmax,wmax))[0]
+        else:
+            candfile = glob.glob(p1+"_ACCEL_%d.cand" % (zmax))[0]
+        basename = '_'.join(p1.split('_')[:-1])
+        i, candfile, infile, dm, maskfile = int(p2[:-4].split('_')[-1]), candfile, '../'+basename+'.fits', p1.split('_')[-1][2:],  './'+basename+'_rfifind.mask',
+        pars.append([i, candfile, infile, dm, maskfile]) 
 
 
-text = "\n".join(info)
-fout = open('clfresult.txt', 'w')
-fout.write(text)
-fout.close()
-for f in [pfdfile[i] for i in pfdindex if pfd_scores[i] >= AI_cutoff_pfd]:
-    os.system('show_pfd %s' % f)
-for f in [spdfile[i] for i in spdindex if spd_scores[i] < AI_cutoff_spd]:
-    os.system('rm %s' % f)
-    os.system('rm %s.ps' % f)
+    if not os.access(resultdir, os.F_OK):
+        os.mkdir(resultdir)
+        os.system('chmod 777 %s' % resultdir)
 
-#os.system('rm /dev/shm/%s' % filename)
+    spamit(prepfold, pars, num_threads=N_thread)
+
+
+    #np.genfromtxt('clfresult.txt', dtypes=[(), (), (), ()])
+    #from collections import defaultdict
+    #allcands = defaultdict(list)
+    #allhits = np.genfromtxt('./clfresult.txt', dtype=[('filename', '|S200'), ('score','f'), ('period', 'f'), ('dm', 'f'), ('sigma', 'f')])
+    #if allhits['filename'].size == 1:
+        #pfdname, score, period, dm, sigma = allhits
+        #allcands[str(period)].append(dm, sigma, pfdname, score, period)
+    #else:
+        #for hit in allhits:
+            #pfdname, score, period, dm, sigma = hit
+            #allcands[str(period)].append((dm, sigma, pfdname, score, period))
+
 
 os.chdir(cwd)
+
+
+if not Single_Pulse_Search_Skip:
+    print '''
+
+    ================single pulse search==================
+
+    '''
+
+    os.chdir(workdir)
+    #os.system('ln -s ../%s %s' % (filename, filename))
+    log = ''
+    def sp_search(f):
+        spcmd = 'single_pulse_search.py --noplot %s' % f
+        status, output = getoutput(spcmd)
+        return output 
+
+    inffile = glob.glob('*_rfifind.inf')[0]
+    rrattrapcmd = '/work/M31/rrattrap.py --inffile %s *.singlepulse' % inffile
+    make_spd_cmd = '/work/M31/singlepulse/make_spd.py --mask -s 64 %s  --groupsfile=groups.txt --maskfile=%s *.singlepulse' % (filename, maskfile)
+
+    log += '\n\n'
+    #output = '\n'.join(spamit(sp_search, [[f] for f in glob.glob('*.dat')]))
+    #log += output
+    #log += '\n\n'
+    #print rrattrapcmd
+    #status, output = getoutput(rrattrapcmd)
+    #log += output
+    #log += '\n\n'
+    print make_spd_cmd
+    status, output = getoutput(make_spd_cmd)
+    log += output
+
+    with open('singlepulse.log', 'w') as fo:
+        fo.write(log)
+    #os.system('rm *.dat')
+    #os.system('rm *.fft')
+
+    #import cPickle, glob, ubc_AI
+    #from ubc_AI.data import pfdreader
+    #from ubc_AI.prepfold import pfd
+    #from astropy.time import Time
+    #from astropy.coordinates import SkyCoord
+    #from astropy import units as u
+    #AI_PATH = '/'.join(ubc_AI.__file__.split('/')[:-1])
+    #classifier = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_PALFA.pkl','rb'))
+    ##classifier = cPickle.load(open(AI_PATH+'/trained_AI/clfl2_BD.pkl','rb'))
+    #pfdfile = glob.glob('*.pfd') 
+    #spdfile = glob.glob('*.spd')
+    #if len(pfdfile) > 0:
+        #try:
+            #pfd_scores = np.array(classifier.report_score([pfdreader(f) for f in pfdfile]))
+        #except:
+            #pfd_scores = []
+            #for f in pfdfile:
+                #try:
+                    #score = classifier.report_score([f])[0]
+                #except:
+                    #score = -1.
+                #pfd_scores.append(score)
+
+    #else:
+        #pfd_scores = np.array([])
+    #if len(spdfile) > 0:
+        #spd_scores = np.array(classifier.report_score([pfdreader(f) for f in spdfile]))
+    #else:
+        #spd_scores = np.array([])
+    #AI_scores = np.hstack((pfd_scores, spd_scores))
+    #allfile = np.hstack((pfdfile, spdfile))
+
+    #argindex = np.argsort(AI_scores)[::-1]
+    #pfdindex = np.argsort(pfd_scores)[::-1]
+    #spdindex = np.argsort(spd_scores)[::-1]
+
+    #info = []
+    #for i in argindex:
+        #name = allfile[i]
+        #rating = AI_scores[i]
+        #ibeam = 0
+        #idx = i
+        #if name.endswith('pfd') and AI_scores[i] > AI_cutoff_pfd:
+            #apfd = pfd(name)
+            #DM = apfd.bestdm
+            #T = apfd.topo_p1 #period
+            #width = apfd.topo_p2 #Pdot
+            #mjd = str(apfd.mid_topo_MJDs.mean())
+            #ra = apfd.rastr
+            #dec = apfd.decstr
+            #sigma = apfd.calc_redchi2()
+        #elif name.endswith('spd') and AI_scores[i] > AI_cutoff_spd:
+            #text_array = np.load(name)['text_array']
+            #DM = float(text_array[8])
+            #mjd = str(text_array[4])
+            #ra = text_array[2]
+            #dec = text_array[3]
+            #width = float(text_array[13])
+            ##duration = float(text_array[11])
+            #T = float(text_array[16])
+            #sigma = float(text_array[9])
+        #else:
+            #continue
+        #ObsDate = Time(float(mjd), format='mjd').datetime
+        #date = ObsDate.strftime("%Y-%m-%d")
+        #time = ObsDate.strftime("%H:%M:%S")
+        #sc = SkyCoord(ra+' '+dec,unit=(u.hourangle, u.deg))
+        #gl = sc.galactic.l.deg
+        #gb = sc.galactic.b.deg
+
+        #info.append(' '.join([str(item) for item in [name, DM, T, date, time, mjd, ibeam, idx, sigma, width, gl, gb, rating]]))
+
+
+    #text = "\n".join(info)
+    #fout = open('clfresult.txt', 'w')
+    #fout.write(text)
+    #fout.close()
+    #for f in [pfdfile[i] for i in pfdindex if pfd_scores[i] >= AI_cutoff_pfd]:
+        #os.system('show_pfd %s' % f)
+    #for f in [spdfile[i] for i in spdindex if spd_scores[i] < AI_cutoff_spd]:
+        #os.system('rm %s' % f)
+        #os.system('rm %s.ps' % f)
+
+    #os.system('rm /dev/shm/%s' % filename)
+
+    os.chdir(cwd)
 print  'FINISHED'
