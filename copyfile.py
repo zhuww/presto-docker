@@ -5,8 +5,6 @@ from subprocess import Popen, PIPE, check_call
 
 container = "10.134.1.60:5000/admin/presto"
 
-
-
 print("docker cp ~/local/src/presto3-docker/DDplan.py %s:/home/psr/software/presto/bin/"%container)
 os.system("docker cp ~/local/src/presto3-docker/DDplan.py %s:/home/psr/software/presto/bin/"%container)
 print("docker cp ~/local/src/presto3-docker/fastpipe %s:/home/psr/software/presto/bin/"%container)
